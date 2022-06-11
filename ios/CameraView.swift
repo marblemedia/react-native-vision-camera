@@ -133,6 +133,8 @@ public final class CameraView: UIView {
     videoPreviewLayer.session = captureSession
     videoPreviewLayer.videoGravity = .resizeAspectFill
     videoPreviewLayer.frame = layer.bounds
+    let filter = CIFilter(name: "CIPhotoEffectMono")
+    videoPreviewLayer.compositingFilter = filter
 
     NotificationCenter.default.addObserver(self,
                                            selector: #selector(sessionRuntimeError),
