@@ -321,6 +321,12 @@ public final class CameraView: UIView, CameraSessionDelegate {
         let frame = Frame(buffer: sampleBuffer, orientation: bufferOrientation)
         frameProcessor.call(frame)
       }
+      guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+        return
+      }
+      if metalPreviewView != nil {
+        metalPreviewView!.pixelBuffer = imageBuffer
+      }
     #endif
 
     #if DEBUG

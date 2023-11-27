@@ -262,12 +262,6 @@ class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVC
     if captureOutput is AVCaptureVideoDataOutput {
       delegate?.onFrame(sampleBuffer: sampleBuffer)
     }
-    
-    guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-      return
-    }
-    
-    
 
     // Record Video Frame/Audio Sample to File in custom `RecordingSession` (AVAssetWriter)
     if isRecording {

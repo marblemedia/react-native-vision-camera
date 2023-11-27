@@ -195,6 +195,7 @@ export function CameraPage({ navigation }: Props): React.ReactElement {
                 audio={hasMicrophonePermission}
                 frameProcessor={frameProcessor}
                 displayType={displayType}
+                pixelFormat={displayType === DisplayType.AUGMENTED ? "rgb" : "native"}
               />
             </TapGestureHandler>
           </Reanimated.View>
