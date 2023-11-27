@@ -242,6 +242,9 @@ class MetalPreviewView: MTKView {
     }
   
     func configureMetal() {
+        /**
+         This is a small hacky way to bundle the shaders we need for this library and then access it at runtime :)
+         */
         let baseBundle = Bundle(for: Self.self)
         guard let resourceBundleUrl = baseBundle.url(forResource: "VisionCamera", withExtension: "bundle") else {
           ReactLogger.log(level: .error, message: "Could not find VisionCamera.bundle - check the build output to see if this exists")
@@ -255,20 +258,17 @@ class MetalPreviewView: MTKView {
           ReactLogger.log(level: .error, message: "Cannot configure Metal renderer - no metallib was detected")
           return
         }
-        var mtlLibrary: MTLLibrary?
+        var mtlLibrary: MTLLibrary!
         do {
           mtlLibrary = try device!.makeLibrary(URL: shaderLibraryUrl)
         } catch {
           ReactLogger.log(level: .error, message: "MTLLibrary could not be created: \(error)")
         }
-        guard let metalLibrary = mtlLibrary else {
-          return
-        }
       
         let pipelineDescriptor = MTLRenderPipelineDescriptor()
         pipelineDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
-        pipelineDescriptor.vertexFunction = metalLibrary.makeFunction(name: "vertexPassThrough")
-        pipelineDescriptor.fragmentFunction = metalLibrary.makeFunction(name: "fragmentPassThrough")
+        pipelineDescriptor.vertexFunction = mtlLibrary.makeFunction(name: "vertexPassThrough")
+        pipelineDescriptor.fragmentFunction = mtlLibrary.makeFunction(name: "fragmentPassThrough")
         
         // To determine how textures are sampled, create a sampler descriptor to query for a sampler state from the device.
         let samplerDescriptor = MTLSamplerDescriptor()

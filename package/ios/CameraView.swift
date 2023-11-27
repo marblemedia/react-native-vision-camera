@@ -106,8 +106,8 @@ public final class CameraView: UIView, CameraSessionDelegate {
   func configurePreviewView(frame: CGRect) {
     DispatchQueue.main.async { [self] in
       // Remove any existing views
-      previewView?.videoPreviewLayer.removeFromSuperlayer()
       previewView?.videoPreviewLayer.session = nil
+      previewView?.videoPreviewLayer.removeFromSuperlayer()
       previewView = nil
       metalPreviewView?.removeFromSuperview()
       metalPreviewView = nil
@@ -118,6 +118,7 @@ public final class CameraView: UIView, CameraSessionDelegate {
       }
       else {
         metalPreviewView = MetalPreviewView(frame: frame)
+        addSubview(metalPreviewView!)
       }
     }
   }
@@ -171,6 +172,10 @@ public final class CameraView: UIView, CameraSessionDelegate {
   // pragma MARK: Props updating
   override public final func didSetProps(_ changedProps: [String]!) {
     ReactLogger.log(level: .info, message: "Updating \(changedProps.count) props: [\(changedProps.joined(separator: ", "))]")
+    
+    if changedProps.contains("displayType") {
+      configurePreviewView(frame: frame)
+    }
 
     cameraSession.configure { config in
       // Input Camera Device

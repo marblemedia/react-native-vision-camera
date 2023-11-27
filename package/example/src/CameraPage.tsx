@@ -44,6 +44,7 @@ export function CameraPage({ navigation }: Props): React.ReactElement {
   const [enableHdr, setEnableHdr] = useState(false)
   const [flash, setFlash] = useState<'off' | 'on'>('off')
   const [enableNightMode, setEnableNightMode] = useState(false)
+  const [displayType, setDisplayType] = useState(DisplayType.SYSTEM)
 
   // camera device settings
   const [preferredDevice] = usePreferredCameraDevice()
@@ -193,7 +194,7 @@ export function CameraPage({ navigation }: Props): React.ReactElement {
                 video={true}
                 audio={hasMicrophonePermission}
                 frameProcessor={frameProcessor}
-                displayType={DisplayType.AUGMENTED}
+                displayType={displayType}
               />
             </TapGestureHandler>
           </Reanimated.View>
@@ -243,6 +244,9 @@ export function CameraPage({ navigation }: Props): React.ReactElement {
         </PressableOpacity>
         <PressableOpacity style={styles.button} onPress={() => navigation.navigate('CodeScannerPage')}>
           <IonIcon name="qr-code-outline" color="white" size={24} />
+        </PressableOpacity>
+        <PressableOpacity style={styles.button} onPress={() => setDisplayType(type => type === DisplayType.SYSTEM ? DisplayType.AUGMENTED : DisplayType.SYSTEM)}>
+          <IonIcon name={displayType === DisplayType.SYSTEM ? 'color-filter-outline' : 'color-filter'} color="white" size={24} />
         </PressableOpacity>
       </View>
     </View>
