@@ -33,5 +33,6 @@ fragment half4 fragmentPassThrough(VertexIO         inputFragment [[ stage_in ]]
                                    texture2d<half> inputTexture  [[ texture(0) ]],
                                    sampler         samplr        [[ sampler(0) ]])
 {
-    return inputTexture.sample(samplr, inputFragment.textureCoord);
+    half4 color = inputTexture.sample(samplr, inputFragment.textureCoord);
+    return (1.0 - color.rgb, 1.0);
 }

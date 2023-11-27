@@ -325,6 +325,7 @@ public final class CameraView: UIView, CameraSessionDelegate {
         return
       }
       if metalPreviewView != nil {
+        
         metalPreviewView!.pixelBuffer = imageBuffer
       }
     #endif
