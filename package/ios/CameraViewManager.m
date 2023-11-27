@@ -28,6 +28,7 @@ RCT_EXPORT_VIEW_PROPERTY(enableDepthData, BOOL);
 RCT_EXPORT_VIEW_PROPERTY(enableHighQualityPhotos, BOOL);
 RCT_EXPORT_VIEW_PROPERTY(enablePortraitEffectsMatteDelivery, BOOL);
 RCT_EXPORT_VIEW_PROPERTY(enableBufferCompression, BOOL);
+RCT_EXPORT_VIEW_PROPERTY(displayType, NSString);
 // use cases
 RCT_EXPORT_VIEW_PROPERTY(photo, BOOL);
 RCT_EXPORT_VIEW_PROPERTY(video, BOOL);

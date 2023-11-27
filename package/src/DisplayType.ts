@@ -1,4 +1,4 @@
 export enum DisplayType {
-    SYSTEM,
-    AUGMENTED
+    SYSTEM = "system",
+    AUGMENTED = "augmented"
 }

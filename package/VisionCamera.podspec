@@ -31,7 +31,8 @@ Pod::Spec.new do |s|
     "GCC_PREPROCESSOR_DEFINITIONS" => "$(inherited) SK_METAL=1 SK_GANESH=1 VISION_CAMERA_ENABLE_FRAME_PROCESSORS=#{hasWorklets}",
     "OTHER_SWIFT_FLAGS" => "$(inherited) #{hasWorklets ? "-D VISION_CAMERA_ENABLE_FRAME_PROCESSORS" : ""}",
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
-    "HEADER_SEARCH_PATHS" => "\"$(PODS_TARGET_SRCROOT)/cpp/\"/** "
+    "HEADER_SEARCH_PATHS" => "\"$(PODS_TARGET_SRCROOT)/cpp/\"/** ",
+    "METAL_LIBRARY_OUTPUT_DIR" => "${TARGET_BUILD_DIR}/VisionCamera.bundle/"
   }
 
   s.requires_arc = true
@@ -72,4 +73,22 @@ Pod::Spec.new do |s|
   if hasWorklets
     s.dependency "react-native-worklets-core"
   end
+  
+  # Create a resource bundle and build the metallib
+  s.resource_bundles = {
+    'VisionCamera' => ['MetalLibPlaceholder']
+  }
+  s.script_phases = [
+    {
+      :name => 'Build Metal Library (metal -> air)',
+      :script => 'xcrun -sdk iphoneos metal -c "${PODS_TARGET_SRCROOT}/ios/Shaders/PassThrough.metal" -o "${PODS_TARGET_SRCROOT}/ios/PassThrough.air"',
+      :execution_position => :after_compile
+    },
+    {
+      :name => 'Build Metal Library (air -> metallib)',
+      :script => 'xcrun -sdk iphoneos metallib "${PODS_TARGET_SRCROOT}/ios/PassThrough.air" -o "${METAL_LIBRARY_OUTPUT_DIR}/PassThrough.metallib" && rm "${PODS_TARGET_SRCROOT}/ios/PassThrough.air"',
+      :execution_position => :after_compile
+    },
+  ]
+  
 end

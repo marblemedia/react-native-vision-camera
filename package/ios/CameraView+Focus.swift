@@ -12,6 +12,7 @@ import Foundation
 extension CameraView {
   func focus(point: CGPoint, promise: Promise) {
     withPromise(promise) {
+      guard let previewView = previewView else { return }
       let normalized = previewView.captureDevicePointConverted(fromLayerPoint: point)
       try cameraSession.focus(point: normalized)
       return nil

@@ -28,6 +28,7 @@ public final class CameraView: UIView, CameraSessionDelegate {
   @objc var enableHighQualityPhotos = false
   @objc var enablePortraitEffectsMatteDelivery = false
   @objc var enableBufferCompression = false
+  @objc var displayType: NSString?
   // use cases
   @objc var photo = false
   @objc var video = false
@@ -52,6 +53,7 @@ public final class CameraView: UIView, CameraSessionDelegate {
   @objc var resizeMode: NSString = "cover" {
     didSet {
       let parsed = try? ResizeMode(jsValue: resizeMode as String)
+      guard let previewView = previewView else { return }
       previewView.resizeMode = parsed ?? .cover
     }
   }
@@ -83,7 +85,9 @@ public final class CameraView: UIView, CameraSessionDelegate {
   var pinchGestureRecognizer: UIPinchGestureRecognizer?
   var pinchScaleOffset: CGFloat = 1.0
 
-  var previewView: PreviewView
+  var previewView: PreviewView?
+  var metalPreviewView: MetalPreviewView?
+  
   #if DEBUG
     var fpsGraph: RCTFPSGraph?
   #endif
@@ -93,11 +97,29 @@ public final class CameraView: UIView, CameraSessionDelegate {
   override public init(frame: CGRect) {
     // Create CameraSession
     cameraSession = CameraSession()
-    previewView = cameraSession.createPreviewView(frame: frame)
     super.init(frame: frame)
     cameraSession.delegate = self
-
-    addSubview(previewView)
+    
+    configurePreviewView(frame: frame)
+  }
+    
+  func configurePreviewView(frame: CGRect) {
+    DispatchQueue.main.async { [self] in
+      // Remove any existing views
+      previewView?.videoPreviewLayer.removeFromSuperlayer()
+      previewView?.videoPreviewLayer.session = nil
+      previewView = nil
+      metalPreviewView?.removeFromSuperview()
+      metalPreviewView = nil
+      // Setup the desired view
+      if displayType == "system" {
+        previewView = cameraSession.createPreviewView(frame: frame)
+        addSubview(previewView!)
+      }
+      else {
+        metalPreviewView = MetalPreviewView(frame: frame)
+      }
+    }
   }
 
   @available(*, unavailable)
@@ -117,6 +139,7 @@ public final class CameraView: UIView, CameraSessionDelegate {
   }
 
   override public func layoutSubviews() {
+    guard let previewView = previewView else { return }
     previewView.frame = frame
     previewView.bounds = bounds
   }
