@@ -4,6 +4,7 @@ import type { CameraRuntimeError } from './CameraError'
 import { CodeScanner } from './CodeScanner'
 import type { Frame } from './Frame'
 import type { Orientation } from './Orientation'
+import { DisplayType } from './DisplayType'
 
 export type FrameProcessor = {
   frameProcessor: (frame: Frame) => void
@@ -284,4 +285,6 @@ export interface CameraProps extends ViewProps {
    */
   codeScanner?: CodeScanner
   //#endregion
+
+  displayType?: DisplayType 
 }

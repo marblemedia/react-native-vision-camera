@@ -35,7 +35,7 @@ export function createFrameProcessor(frameProcessor: FrameProcessor['frameProces
  *
  * Make sure to add the `'worklet'` directive to the top of the Frame Processor function, otherwise it will not get compiled into a worklet.
  *
- * @param frameProcessor The Frame Processor
+ * @param frameProcessor The Frame Processor - can optionally return a frame which will be displayed
  * @param dependencies The React dependencies which will be copied into the VisionCamera JS-Runtime.
  * @returns The memoized Frame Processor.
  * @example
@@ -47,7 +47,7 @@ export function createFrameProcessor(frameProcessor: FrameProcessor['frameProces
  * }, [])
  * ```
  */
-export function useFrameProcessor(frameProcessor: (frame: Frame) => void, dependencies: DependencyList): FrameProcessor {
+export function useFrameProcessor(frameProcessor: (frame: Frame) => Frame | void, dependencies: DependencyList): FrameProcessor {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => createFrameProcessor(frameProcessor, 'frame-processor'), dependencies)
 }
