@@ -319,14 +319,15 @@ public final class CameraView: UIView, CameraSessionDelegate {
       if let frameProcessor = frameProcessor {
         // Call Frame Processor
         let frame = Frame(buffer: sampleBuffer, orientation: bufferOrientation)
-        frameProcessor.call(frame)
-      }
-      guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-        return
-      }
-      if metalPreviewView != nil {
-        
-        metalPreviewView!.pixelBuffer = imageBuffer
+        let presentationFrame = frameProcessor.call(frame)
+        // If a frame was returned then present it
+        guard let presentationFrame = presentationFrame else { return }
+        guard let imageBuffer = CMSampleBufferGetImageBuffer(presentationFrame.buffer) else {
+          return
+        }
+        if metalPreviewView != nil {
+          metalPreviewView!.pixelBuffer = imageBuffer
+        }
       }
     #endif
 

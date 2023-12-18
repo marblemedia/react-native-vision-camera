@@ -30,7 +30,7 @@ using namespace facebook;
   return self;
 }
 
-- (void)callWithFrameHostObject:(std::shared_ptr<FrameHostObject>)frameHostObject {
+- (Frame* _Nullable)callWithFrameHostObject:(std::shared_ptr<FrameHostObject>)frameHostObject {
   // Call the Frame Processor on the Worklet Runtime
   jsi::Runtime& runtime = _workletContext->getWorkletRuntime();
 
@@ -40,7 +40,16 @@ using namespace facebook;
     jsi::Value jsValue(std::move(argument));
 
     // Call the Worklet with the Frame JS Host Object as an argument
-    _workletInvoker->call(runtime, jsi::Value::undefined(), &jsValue, 1);
+    auto frameProcessorResult = _workletInvoker->call(runtime, jsi::Value::undefined(), &jsValue, 1);
+    // If we didn't return a frame, return nil
+    // TODO: This doesn't return anything, the result is always undefined...
+    if (frameProcessorResult.isUndefined()) {
+      return nil;
+    }
+    // Create host object from worklet result so we can get the Frame
+    auto processedFrameHostObject = static_cast<FrameHostObject*>(frameProcessorResult.asObject(runtime).asHostObject(runtime).get());
+    auto processedFrame = processedFrameHostObject->frame;
+    return processedFrame;
   } catch (jsi::JSError& jsError) {
     // JS Error occured, print it to console.
     auto message = jsError.getMessage();
@@ -49,13 +58,14 @@ using namespace facebook;
       auto logFn = jsRuntime.global().getPropertyAsObject(jsRuntime, "console").getPropertyAsFunction(jsRuntime, "error");
       logFn.call(jsRuntime, jsi::String::createFromUtf8(jsRuntime, "Frame Processor threw an error: " + message));
     });
+    return nil;
   }
 }
 
-- (void)call:(Frame* _Nonnull)frame {
+- (Frame* _Nullable)call:(Frame* _Nonnull)frame {
   // Create the Frame Host Object wrapping the internal Frame
   auto frameHostObject = std::make_shared<FrameHostObject>(frame);
-  [self callWithFrameHostObject:frameHostObject];
+  return [self callWithFrameHostObject:frameHostObject];
 }
 
 @end

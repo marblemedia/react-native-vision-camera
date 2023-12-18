@@ -25,9 +25,9 @@
 - (instancetype _Nonnull)initWithWorklet:(std::shared_ptr<RNWorklet::JsiWorklet>)worklet
                                  context:(std::shared_ptr<RNWorklet::JsiWorkletContext>)context;
 
-- (void)callWithFrameHostObject:(std::shared_ptr<FrameHostObject>)frameHostObject;
+- (Frame* _Nullable)callWithFrameHostObject:(std::shared_ptr<FrameHostObject>)frameHostObject;
 #endif
 
-- (void)call:(Frame* _Nonnull)frame;
+- (Frame* _Nullable)call:(Frame* _Nonnull)frame;
 
 @end

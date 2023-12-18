@@ -19,7 +19,7 @@ export function createFrameProcessor(frameProcessor: FrameProcessor['frameProces
       internal.incrementRefCount()
       try {
         // Call sync frame processor
-        frameProcessor(frame)
+        return frameProcessor(frame)
       } finally {
         // Potentially delete Frame if we were the last ref (no runAsync)
         internal.decrementRefCount()
