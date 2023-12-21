@@ -49,6 +49,7 @@ using namespace facebook;
     // Create host object from worklet result so we can get the Frame
     auto processedFrameHostObject = static_cast<FrameHostObject*>(frameProcessorResult.asObject(runtime).asHostObject(runtime).get());
     auto processedFrame = processedFrameHostObject->frame;
+    processedFrameHostObject->frame = nil;
     return processedFrame;
   } catch (jsi::JSError& jsError) {
     // JS Error occured, print it to console.

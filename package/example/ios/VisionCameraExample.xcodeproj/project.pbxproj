@@ -13,6 +13,10 @@
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		839E2C632ACB2E330037BC2B /* ExampleSwiftFrameProcessor.m in Sources */ = {isa = PBXBuildFile; fileRef = 839E2C622ACB2E330037BC2B /* ExampleSwiftFrameProcessor.m */; };
 		839E2C652ACB2E420037BC2B /* ExampleSwiftFrameProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 839E2C642ACB2E420037BC2B /* ExampleSwiftFrameProcessor.swift */; };
+		8E0E8B392B33CCC3006C46B2 /* mask.png in Resources */ = {isa = PBXBuildFile; fileRef = 8E0E8B382B33CCC3006C46B2 /* mask.png */; };
+		8E836E3E2B30F89500E0B533 /* ExamplePluginFilter.m in Sources */ = {isa = PBXBuildFile; fileRef = 8E836E3D2B30F89500E0B533 /* ExamplePluginFilter.m */; };
+		8E836E402B31874100E0B533 /* RenderingUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E836E3F2B31874100E0B533 /* RenderingUtils.swift */; };
+		8E836E422B318A1100E0B533 /* ExamplePluginFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E836E412B318A1100E0B533 /* ExamplePluginFilter.swift */; };
 		B8DB3BDC263DEA31004C18D7 /* ExampleFrameProcessorPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = B8DB3BD8263DEA31004C18D7 /* ExampleFrameProcessorPlugin.m */; };
 		B8F0E10825E0199F00586F16 /* File.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8F0E10725E0199F00586F16 /* File.swift */; };
 		C0B129659921D2EA967280B2 /* libPods-VisionCameraExample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3CDCFE89C25C89320B98945E /* libPods-VisionCameraExample.a */; };
@@ -30,6 +34,10 @@
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = VisionCameraExample/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		839E2C622ACB2E330037BC2B /* ExampleSwiftFrameProcessor.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ExampleSwiftFrameProcessor.m; sourceTree = "<group>"; };
 		839E2C642ACB2E420037BC2B /* ExampleSwiftFrameProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExampleSwiftFrameProcessor.swift; sourceTree = "<group>"; };
+		8E0E8B382B33CCC3006C46B2 /* mask.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = mask.png; sourceTree = "<group>"; };
+		8E836E3D2B30F89500E0B533 /* ExamplePluginFilter.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ExamplePluginFilter.m; sourceTree = "<group>"; };
+		8E836E3F2B31874100E0B533 /* RenderingUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderingUtils.swift; sourceTree = "<group>"; };
+		8E836E412B318A1100E0B533 /* ExamplePluginFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamplePluginFilter.swift; sourceTree = "<group>"; };
 		B8DB3BD8263DEA31004C18D7 /* ExampleFrameProcessorPlugin.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ExampleFrameProcessorPlugin.m; sourceTree = "<group>"; };
 		B8F0E10625E0199F00586F16 /* VisionCameraExample-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "VisionCameraExample-Bridging-Header.h"; sourceTree = "<group>"; };
 		B8F0E10725E0199F00586F16 /* File.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = File.swift; sourceTree = "<group>"; };
@@ -125,11 +133,23 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		8E836E3C2B30F84200E0B533 /* Example Plugin (CIFilter) */ = {
+			isa = PBXGroup;
+			children = (
+				8E0E8B382B33CCC3006C46B2 /* mask.png */,
+				8E836E3D2B30F89500E0B533 /* ExamplePluginFilter.m */,
+				8E836E412B318A1100E0B533 /* ExamplePluginFilter.swift */,
+			);
+			path = "Example Plugin (CIFilter)";
+			sourceTree = "<group>";
+		};
 		B8DB3BD6263DEA31004C18D7 /* Frame Processor Plugins */ = {
 			isa = PBXGroup;
 			children = (
+				8E836E3C2B30F84200E0B533 /* Example Plugin (CIFilter) */,
 				B8DB3BD7263DEA31004C18D7 /* Example Plugin */,
 				839E2C612ACB2E140037BC2B /* Example Swift Plugin */,
+				8E836E3F2B31874100E0B533 /* RenderingUtils.swift */,
 			);
 			path = "Frame Processor Plugins";
 			sourceTree = "<group>";
@@ -208,6 +228,7 @@
 			files = (
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
+				8E0E8B392B33CCC3006C46B2 /* mask.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -393,6 +414,9 @@
 				839E2C652ACB2E420037BC2B /* ExampleSwiftFrameProcessor.swift in Sources */,
 				839E2C632ACB2E330037BC2B /* ExampleSwiftFrameProcessor.m in Sources */,
 				B8F0E10825E0199F00586F16 /* File.swift in Sources */,
+				8E836E3E2B30F89500E0B533 /* ExamplePluginFilter.m in Sources */,
+				8E836E402B31874100E0B533 /* RenderingUtils.swift in Sources */,
+				8E836E422B318A1100E0B533 /* ExamplePluginFilter.swift in Sources */,
 				13B07FC11A68108700A75B9A /* main.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -412,7 +436,7 @@
 				INFOPLIST_FILE = VisionCameraExample/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Vision Camera";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
@@ -443,7 +467,7 @@
 				INFOPLIST_FILE = VisionCameraExample/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Vision Camera";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				OTHER_LDFLAGS = (
 					"$(inherited)",

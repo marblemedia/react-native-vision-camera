@@ -19,6 +19,7 @@ import { useIsFocused } from '@react-navigation/core'
 import { examplePlugin } from './frame-processors/ExamplePlugin'
 import { exampleKotlinSwiftPlugin } from './frame-processors/ExampleKotlinSwiftPlugin'
 import { usePreferredCameraDevice } from './hooks/usePreferredCameraDevice'
+import { examplePluginFilter } from './frame-processors/ExamplePluginFilter'
 
 const ReanimatedCamera = Reanimated.createAnimatedComponent(Camera)
 Reanimated.addWhitelistedNativeProps({
@@ -61,9 +62,9 @@ export function CameraPage({ navigation }: Props): React.ReactElement {
   const format = useCameraFormat(device, [
     { fps: targetFps },
     { videoAspectRatio: screenAspectRatio },
-    { videoResolution: 'max' },
+    { videoResolution: { width: 720, height: 1280 } },
     { photoAspectRatio: screenAspectRatio },
-    { photoResolution: 'max' },
+    { photoResolution: { width: 720, height: 1280 } },
   ])
 
   const fps = Math.min(format?.maxFps ?? 1, targetFps)
@@ -164,7 +165,8 @@ export function CameraPage({ navigation }: Props): React.ReactElement {
 
   const frameProcessor = useFrameProcessor((frame) => {
     'worklet'
-    return frame;
+    const filteredFrame = examplePluginFilter(frame)
+    return filteredFrame;
   }, [])
 
   return (
