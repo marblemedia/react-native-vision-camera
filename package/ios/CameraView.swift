@@ -61,6 +61,8 @@ public final class CameraView: UIView, CameraSessionDelegate {
   // events
   @objc var onInitialized: RCTDirectEventBlock?
   @objc var onError: RCTDirectEventBlock?
+  @objc var onStarted: RCTDirectEventBlock?
+  @objc var onStopped: RCTDirectEventBlock?
   @objc var onViewReady: RCTDirectEventBlock?
   @objc var onCodeScanned: RCTDirectEventBlock?
   // zoom
@@ -84,6 +86,7 @@ public final class CameraView: UIView, CameraSessionDelegate {
   // CameraView+Zoom
   var pinchGestureRecognizer: UIPinchGestureRecognizer?
   var pinchScaleOffset: CGFloat = 1.0
+  private var currentConfigureCall: DispatchTime?
 
   var previewView: PreviewView?
   var metalPreviewView: MetalPreviewView?
@@ -176,8 +179,19 @@ public final class CameraView: UIView, CameraSessionDelegate {
     if changedProps.contains("displayType") {
       configurePreviewView(frame: frame)
     }
+    
+    let now = DispatchTime.now()
+    currentConfigureCall = now
 
-    cameraSession.configure { config in
+    cameraSession.configure { [self] config in
+      // Check if we're still the latest call to configure { ... }
+      guard currentConfigureCall == now else {
+        // configure waits for a lock, and if a new call to update() happens in the meantime we can drop this one.
+        // this works similar to how React implemented concurrent rendering, the newer call to update() has higher priority.
+        ReactLogger.log(level: .info, message: "A new configure { ... } call arrived, aborting this one...")
+        return
+      }
+
       // Input Camera Device
       config.cameraId = cameraId as? String
 
@@ -265,6 +279,9 @@ public final class CameraView: UIView, CameraSessionDelegate {
         self.setupFpsGraph()
       }
     }
+
+    // Prevent phone from going to sleep
+    UIApplication.shared.isIdleTimerDisabled = isActive
   }
 
   func setupFpsGraph() {
@@ -311,7 +328,23 @@ public final class CameraView: UIView, CameraSessionDelegate {
     guard let onInitialized = onInitialized else {
       return
     }
-    onInitialized([String: Any]())
+    onInitialized([:])
+  }
+
+  func onCameraStarted() {
+    ReactLogger.log(level: .info, message: "Camera started!")
+    guard let onStarted = onStarted else {
+      return
+    }
+    onStarted([:])
+  }
+
+  func onCameraStopped() {
+    ReactLogger.log(level: .info, message: "Camera stopped!")
+    guard let onStopped = onStopped else {
+      return
+    }
+    onStopped([:])
   }
 
   func onFrame(sampleBuffer: CMSampleBuffer) {

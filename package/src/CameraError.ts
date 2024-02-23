@@ -16,13 +16,16 @@ export type DeviceError =
 export type FormatError =
   | 'format/invalid-fps'
   | 'format/invalid-video-hdr'
+  | 'format/invalid-video-stabilization-mode'
   | 'format/incompatible-pixel-format-with-hdr-setting'
   | 'format/invalid-format'
+  | 'format/format-required'
 export type SessionError =
   | 'session/camera-not-ready'
   | 'session/camera-cannot-be-opened'
   | 'session/camera-has-been-disconnected'
   | 'session/audio-in-use-by-other-app'
+  | 'session/no-outputs'
   | 'session/audio-session-failed-to-activate'
 export type CodeScannerError =
   | 'code-scanner/not-compatible-with-outputs'
@@ -34,10 +37,14 @@ export type CaptureError =
   | 'capture/file-io-error'
   | 'capture/create-temp-file-error'
   | 'capture/create-recorder-error'
+  | 'capture/insufficient-storage'
   | 'capture/recorder-error'
   | 'capture/video-not-enabled'
   | 'capture/photo-not-enabled'
+  | 'capture/frame-invalid'
   | 'capture/aborted'
+  | 'capture/focus-canceled'
+  | 'capture/timed-out'
   | 'capture/unknown'
 export type SystemError =
   | 'system/camera-module-not-found'

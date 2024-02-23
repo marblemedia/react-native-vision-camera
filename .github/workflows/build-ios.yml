@@ -30,9 +30,9 @@ jobs:
 
       - name: Get yarn cache directory path
         id: yarn-cache-dir-path
-        run: echo "::set-output name=dir::$(yarn cache dir)"
+        run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
       - name: Restore node_modules from cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: yarn-cache
         with:
           path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
@@ -51,19 +51,17 @@ jobs:
         with:
           ruby-version: 2.6.10
           bundler-cache: true
+          working-directory: package/example/ios
 
       - name: Restore Pods cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
-          path: |
-            package/example/ios/Pods
-            ~/Library/Caches/CocoaPods
-            ~/.cocoapods
+          path: package/example/ios/Pods
           key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
           restore-keys: |
             ${{ runner.os }}-pods-
       - name: Install Pods
-        run: pod install
+        run: bundle exec pod install
       - name: Install xcpretty
         run: gem install xcpretty
       - name: Build App
@@ -89,9 +87,9 @@ jobs:
 
       - name: Get yarn cache directory path
         id: yarn-cache-dir-path
-        run: echo "::set-output name=dir::$(yarn cache dir)"
+        run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
       - name: Restore node_modules from cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: yarn-cache
         with:
           path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
@@ -112,19 +110,17 @@ jobs:
         with:
           ruby-version: 2.6.10
           bundler-cache: true
+          working-directory: package/example/ios
 
       - name: Restore Pods cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
-          path: |
-            package/example/ios/Pods
-            ~/Library/Caches/CocoaPods
-            ~/.cocoapods
+          path: package/example/ios/Pods
           key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
           restore-keys: |
             ${{ runner.os }}-pods-
       - name: Install Pods
-        run: pod install
+        run: bundle exec pod install
       - name: Install xcpretty
         run: gem install xcpretty
       - name: Build App

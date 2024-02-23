@@ -16,6 +16,7 @@ import Foundation
 class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
   // Configuration
   var configuration: CameraConfiguration?
+  var currentConfigureCall: DispatchTime = .now()
   // Capture Session
   let captureSession = AVCaptureSession()
   let audioCaptureSession = AVCaptureSession()
@@ -97,68 +98,84 @@ class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVC
    Any changes in here will be re-configured only if required, and under a lock.
    The `configuration` object is a copy of the currently active configuration that can be modified by the caller in the lambda.
    */
-  func configure(_ lambda: (_ configuration: CameraConfiguration) throws -> Void) {
-    ReactLogger.log(level: .info, message: "Updating Session Configuration...")
+  func configure(_ lambda: @escaping (_ configuration: CameraConfiguration) throws -> Void) {
+    ReactLogger.log(level: .info, message: "configure { ... }: Waiting for lock...")
 
-    // Let caller configure a new configuration for the Camera.
-    let config = CameraConfiguration(copyOf: configuration)
-    do {
-      try lambda(config)
-    } catch {
-      onConfigureError(error)
-    }
-    let difference = CameraConfiguration.Difference(between: configuration, and: config)
-
-    // Set up Camera (Video) Capture Session (on camera queue)
+    // Set up Camera (Video) Capture Session (on camera queue, acts like a lock)
     CameraQueues.cameraQueue.async {
+      // Let caller configure a new configuration for the Camera.
+      let config = CameraConfiguration(copyOf: self.configuration)
+      do {
+        try lambda(config)
+      } catch {
+        self.onConfigureError(error)
+        return
+      }
+      let difference = CameraConfiguration.Difference(between: self.configuration, and: config)
+
+      ReactLogger.log(level: .info, message: "configure { ... }: Updating CameraSession Configuration... \(difference)")
+
       do {
         // If needed, configure the AVCaptureSession (inputs, outputs)
         if difference.isSessionConfigurationDirty {
-          try self.withSessionLock {
-            // 1. Update input device
-            if difference.inputChanged {
-              try self.configureDevice(configuration: config)
-            }
-            // 2. Update outputs
-            if difference.outputsChanged {
-              try self.configureOutputs(configuration: config)
-            }
-            // 3. Update Video Stabilization
-            if difference.videoStabilizationChanged {
-              self.configureVideoStabilization(configuration: config)
-            }
-            // 4. Update output orientation
-            if difference.orientationChanged {
-              self.configureOrientation(configuration: config)
-            }
+          self.captureSession.beginConfiguration()
+
+          // 1. Update input device
+          if difference.inputChanged {
+            try self.configureDevice(configuration: config)
           }
+          // 2. Update outputs
+          if difference.outputsChanged {
+            try self.configureOutputs(configuration: config)
+          }
+          // 3. Update Video Stabilization
+          if difference.videoStabilizationChanged {
+            self.configureVideoStabilization(configuration: config)
+          }
+          // 4. Update output orientation
+          if difference.orientationChanged {
+            self.configureOrientation(configuration: config)
+          }
+        }
+
+        guard let device = self.videoDeviceInput?.device else {
+          throw CameraError.device(.noDevice)
         }
 
         // If needed, configure the AVCaptureDevice (format, zoom, low-light-boost, ..)
         if difference.isDeviceConfigurationDirty {
-          try self.withDeviceLock { device in
-            // 4. Configure format
-            if difference.formatChanged {
-              try self.configureFormat(configuration: config, device: device)
-            }
-            // 5. After step 2. and 4., we also need to configure the PixelFormat.
-            //    This needs to be done AFTER we updated the `format`, as this controls the supported PixelFormats.
-            if difference.outputsChanged || difference.formatChanged {
-              try self.configurePixelFormat(configuration: config)
-            }
-            // 6. Configure side-props (fps, lowLightBoost)
-            if difference.sidePropsChanged {
-              try self.configureSideProps(configuration: config, device: device)
-            }
-            // 7. Configure zoom
-            if difference.zoomChanged {
-              self.configureZoom(configuration: config, device: device)
-            }
-            // 8. Configure exposure bias
-            if difference.exposureChanged {
-              self.configureExposure(configuration: config, device: device)
-            }
+          try device.lockForConfiguration()
+          defer {
+            device.unlockForConfiguration()
           }
+
+          // 4. Configure format
+          if difference.formatChanged {
+            try self.configureFormat(configuration: config, device: device)
+          }
+          // 5. After step 2. and 4., we also need to configure the PixelFormat.
+          //    This needs to be done AFTER we updated the `format`, as this controls the supported PixelFormats.
+          if difference.outputsChanged || difference.formatChanged {
+            try self.configurePixelFormat(configuration: config)
+          }
+          // 6. Configure side-props (fps, lowLightBoost)
+          if difference.sidePropsChanged {
+            try self.configureSideProps(configuration: config, device: device)
+          }
+          // 7. Configure zoom
+          if difference.zoomChanged {
+            self.configureZoom(configuration: config, device: device)
+          }
+          // 8. Configure exposure bias
+          if difference.exposureChanged {
+            self.configureExposure(configuration: config, device: device)
+          }
+        }
+
+        if difference.isSessionConfigurationDirty {
+          // We commit the session config updates AFTER the device config,
+          // that way we can also batch those changes into one update instead of doing two updates.
+          self.captureSession.commitConfiguration()
         }
 
         // 9. Start or stop the session if needed
@@ -166,76 +183,43 @@ class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVC
 
         // 10. Enable or disable the Torch if needed (requires session to be running)
         if difference.torchChanged {
-          try self.withDeviceLock { device in
-            try self.configureTorch(configuration: config, device: device)
+          try device.lockForConfiguration()
+          defer {
+            device.unlockForConfiguration()
           }
+          try self.configureTorch(configuration: config, device: device)
         }
 
         // Notify about Camera initialization
         if difference.inputChanged {
           self.delegate?.onSessionInitialized()
         }
+
+        // After configuring, set this to the new configuration.
+        self.configuration = config
       } catch {
         self.onConfigureError(error)
       }
-    }
 
-    // Set up Audio Capture Session (on audio queue)
-    if difference.audioSessionChanged {
-      CameraQueues.audioQueue.async {
-        do {
-          // Lock Capture Session for configuration
-          ReactLogger.log(level: .info, message: "Beginning AudioSession configuration...")
-          self.audioCaptureSession.beginConfiguration()
+      // Set up Audio Capture Session (on audio queue)
+      if difference.audioSessionChanged {
+        CameraQueues.audioQueue.async {
+          do {
+            // Lock Capture Session for configuration
+            ReactLogger.log(level: .info, message: "Beginning AudioSession configuration...")
+            self.audioCaptureSession.beginConfiguration()
 
-          try self.configureAudioSession(configuration: config)
+            try self.configureAudioSession(configuration: config)
 
-          // Unlock Capture Session again and submit configuration to Hardware
-          self.audioCaptureSession.commitConfiguration()
-          ReactLogger.log(level: .info, message: "Committed AudioSession configuration!")
-        } catch {
-          self.onConfigureError(error)
+            // Unlock Capture Session again and submit configuration to Hardware
+            self.audioCaptureSession.commitConfiguration()
+            ReactLogger.log(level: .info, message: "Committed AudioSession configuration!")
+          } catch {
+            self.onConfigureError(error)
+          }
         }
       }
     }
-
-    // After configuring, set this to the new configuration.
-    configuration = config
-  }
-
-  /**
-   Runs the given [lambda] under an AVCaptureSession configuration lock (`beginConfiguration()`)
-   */
-  private func withSessionLock(_ lambda: () throws -> Void) throws {
-    // Lock Capture Session for configuration
-    ReactLogger.log(level: .info, message: "Beginning CameraSession configuration...")
-    captureSession.beginConfiguration()
-    defer {
-      // Unlock Capture Session again and submit configuration to Hardware
-      self.captureSession.commitConfiguration()
-      ReactLogger.log(level: .info, message: "Committed CameraSession configuration!")
-    }
-
-    // Call lambda
-    try lambda()
-  }
-
-  /**
-   Runs the given [lambda] under an AVCaptureDevice configuration lock (`lockForConfiguration()`)
-   */
-  private func withDeviceLock(_ lambda: (_ device: AVCaptureDevice) throws -> Void) throws {
-    guard let device = videoDeviceInput?.device else {
-      throw CameraError.session(.cameraNotReady)
-    }
-    ReactLogger.log(level: .info, message: "Beginning CaptureDevice configuration...")
-    try device.lockForConfiguration()
-    defer {
-      device.unlockForConfiguration()
-      ReactLogger.log(level: .info, message: "Committed CaptureDevice configuration!")
-    }
-
-    // Call lambda with Device
-    try lambda(device)
   }
 
   /**
@@ -249,8 +233,10 @@ class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVC
     // Start/Stop session
     if configuration.isActive {
       captureSession.startRunning()
+      delegate?.onCameraStarted()
     } else {
       captureSession.stopRunning()
+      delegate?.onCameraStopped()
     }
   }
 

@@ -53,6 +53,13 @@ class RecordingSession {
   }
 
   /**
+   Gets the size of the recorded video, in pixels.
+   */
+  var size: CGSize? {
+    return videoWriter?.naturalSize
+  }
+
+  /**
    Get the duration (in seconds) of the recorded video.
    */
   var duration: Double {
@@ -154,7 +161,7 @@ class RecordingSession {
     ReactLogger.log(level: .info, message: "Started RecordingSession at time: \(currentTime.seconds)")
 
     if audioWriter == nil {
-      // Audio was enabled, mark the Audio track as finished so we won't wait for it.
+      // Audio was disabled, mark the Audio track as finished so we won't wait for it.
       hasWrittenLastAudioFrame = true
     }
   }
@@ -194,11 +201,7 @@ class RecordingSession {
    - Use bufferType to specify if this is a video or audio frame.
    */
   func appendBuffer(_ buffer: CMSampleBuffer, clock _: CMClock, type bufferType: BufferType) {
-    // 1. Check if the data is even ready
-    guard let startTimestamp = startTimestamp else {
-      // Session not yet started
-      return
-    }
+    // 1. Prepare the data
     guard !isFinishing else {
       // Session is already finishing, can't write anything more
       return
@@ -212,15 +215,8 @@ class RecordingSession {
       return
     }
 
-    // 2. Check the timing of the buffer and make sure it's within our session start and stop times
+    // 2. Check the timing of the buffer and make sure it's not after we requested a session stop
     let timestamp = CMSampleBufferGetPresentationTimeStamp(buffer)
-    if timestamp < startTimestamp {
-      // Don't write this Frame, it was captured before we even started recording.
-      // The reason this can happen is because the capture pipeline can have a delay, e.g. because of stabilization.
-      let delay = CMTimeSubtract(startTimestamp, timestamp)
-      ReactLogger.log(level: .info, message: "Capture Pipeline has a delay of \(delay.seconds) seconds. Skipping this late Frame...")
-      return
-    }
     if let stopTimestamp = stopTimestamp,
        timestamp >= stopTimestamp {
       // This Frame is exactly at, or after the point in time when RecordingSession.stop() has been called.
@@ -231,13 +227,13 @@ class RecordingSession {
           // already wrote last Video Frame before, so skip this one.
           return
         }
-        hasWrittenLastVideoFrame = true // flip to true, then write it
+        hasWrittenLastVideoFrame = true // flip to true, then fallthrough & write it
       case .audio:
         if hasWrittenLastAudioFrame {
           // already wrote last Audio Frame before, so skip this one.
           return
         }
-        hasWrittenLastAudioFrame = true // flip to true, then write it
+        hasWrittenLastAudioFrame = true // flip to true, then fallthrough & write it
       }
     }
 

@@ -30,7 +30,7 @@ class CameraDevicesManager(private val reactContext: ReactApplicationContext) : 
       }
 
     override fun onCameraAvailable(cameraId: String) {
-      Log.i(TAG, "Camera #$cameraId: Available!")
+      Log.i(TAG, "Camera #$cameraId is now available.")
       if (!devices.contains(cameraId)) {
         devices.add(cameraId)
         sendAvailableDevicesChangedEvent()
@@ -38,7 +38,7 @@ class CameraDevicesManager(private val reactContext: ReactApplicationContext) : 
     }
 
     override fun onCameraUnavailable(cameraId: String) {
-      Log.i(TAG, "Camera #$cameraId: Unavailable!")
+      Log.i(TAG, "Camera #$cameraId is now unavailable.")
       if (devices.contains(cameraId) && !isDeviceConnected(cameraId)) {
         devices.remove(cameraId)
         sendAvailableDevicesChangedEvent()
@@ -71,8 +71,6 @@ class CameraDevicesManager(private val reactContext: ReactApplicationContext) : 
     eventEmitter.emit("CameraDevicesChanged", getDevicesJson())
   }
 
-  override fun hasConstants(): Boolean = true
-
   override fun getConstants(): MutableMap<String, Any?> {
     val devices = getDevicesJson()
     val preferredDevice = if (devices.size() > 0) devices.getMap(0) else null
@@ -84,9 +82,11 @@ class CameraDevicesManager(private val reactContext: ReactApplicationContext) : 
   }
 
   // Required for NativeEventEmitter, this is just a dummy implementation:
+  @Suppress("unused", "UNUSED_PARAMETER")
   @ReactMethod
   fun addListener(eventName: String) {}
 
+  @Suppress("unused", "UNUSED_PARAMETER")
   @ReactMethod
   fun removeListeners(count: Int) {}
 }

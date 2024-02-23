@@ -1,87 +1,75 @@
 package com.mrousavy.camera.core
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.ImageFormat
 import android.graphics.Point
-import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
-import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
-import android.hardware.camera2.CameraMetadata
-import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
-import android.hardware.camera2.params.MeteringRectangle
-import android.hardware.camera2.params.OutputConfiguration
 import android.media.Image
 import android.media.ImageReader
-import android.os.Build
 import android.util.Log
-import android.util.Range
 import android.util.Size
 import android.view.Surface
 import android.view.SurfaceHolder
+import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.common.Barcode
+import com.mrousavy.camera.core.capture.RepeatingCaptureRequest
 import com.mrousavy.camera.core.outputs.BarcodeScannerOutput
 import com.mrousavy.camera.core.outputs.PhotoOutput
 import com.mrousavy.camera.core.outputs.SurfaceOutput
 import com.mrousavy.camera.core.outputs.VideoPipelineOutput
-import com.mrousavy.camera.extensions.bigger
-import com.mrousavy.camera.extensions.capture
 import com.mrousavy.camera.extensions.closestToOrMax
-import com.mrousavy.camera.extensions.createCaptureSession
-import com.mrousavy.camera.extensions.createPhotoCaptureRequest
-import com.mrousavy.camera.extensions.getPhotoSizes
-import com.mrousavy.camera.extensions.getPreviewTargetSize
-import com.mrousavy.camera.extensions.getVideoSizes
-import com.mrousavy.camera.extensions.openCamera
-import com.mrousavy.camera.extensions.setZoom
-import com.mrousavy.camera.extensions.smaller
-import com.mrousavy.camera.frameprocessor.FrameProcessor
+import com.mrousavy.camera.frameprocessor.Frame
 import com.mrousavy.camera.types.Flash
+import com.mrousavy.camera.types.LensFacing
 import com.mrousavy.camera.types.Orientation
 import com.mrousavy.camera.types.QualityPrioritization
-import com.mrousavy.camera.types.Torch
-import com.mrousavy.camera.types.VideoCodec
-import com.mrousavy.camera.types.VideoFileType
-import com.mrousavy.camera.types.VideoStabilizationMode
+import com.mrousavy.camera.types.RecordVideoOptions
+import com.mrousavy.camera.utils.ImageFormatUtils
 import java.io.Closeable
-import java.util.concurrent.CancellationException
-import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class CameraSession(private val context: Context, private val cameraManager: CameraManager, private val callback: CameraSessionCallback) :
+class CameraSession(private val context: Context, private val cameraManager: CameraManager, private val callback: Callback) :
   Closeable,
-  CoroutineScope {
+  PersistentCameraCaptureSession.Callback {
   companion object {
     private const val TAG = "CameraSession"
-
-    // TODO: Samsung advertises 60 FPS but only allows 30 FPS for some reason.
-    private val CAN_DO_60_FPS = !Build.MANUFACTURER.equals("samsung", true)
   }
 
   // Camera Configuration
   private var configuration: CameraConfiguration? = null
 
   // Camera State
-  private var captureSession: CameraCaptureSession? = null
-  private var cameraDevice: CameraDevice? = null
-  private var previewRequest: CaptureRequest.Builder? = null
+  private val captureSession = PersistentCameraCaptureSession(cameraManager, this)
   private var photoOutput: PhotoOutput? = null
   private var videoOutput: VideoPipelineOutput? = null
-  private var previewOutput: SurfaceOutput? = null
   private var codeScannerOutput: BarcodeScannerOutput? = null
   private var previewView: PreviewView? = null
   private val photoOutputSynchronizer = PhotoOutputSynchronizer()
   private val mutex = Mutex()
+  private var isDestroyed = false
   private var isRunning = false
+    set(value) {
+      if (field != value) {
+        if (value) {
+          callback.onStarted()
+        } else {
+          callback.onStopped()
+        }
+      }
+      field = value
+    }
 
-  override val coroutineContext: CoroutineContext
-    get() = CameraQueues.cameraQueue.coroutineDispatcher
+  private val coroutineScope = CoroutineScope(CameraQueues.cameraQueue.coroutineDispatcher)
 
   // Video Outputs
   private var recording: RecordingSession? = null
@@ -89,20 +77,6 @@ class CameraSession(private val context: Context, private val cameraManager: Cam
       field = value
       updateVideoOutputs()
     }
-  var frameProcessor: FrameProcessor? = null
-    set(value) {
-      field = value
-      updateVideoOutputs()
-    }
-
-  override fun close() {
-    runBlocking {
-      mutex.withLock {
-        destroy()
-        photoOutputSynchronizer.clear()
-      }
-    }
-  }
 
   val orientation: Orientation
     get() {
@@ -112,43 +86,74 @@ class CameraSession(private val context: Context, private val cameraManager: Cam
       return Orientation.fromRotationDegrees(sensorRotation)
     }
 
-  suspend fun configure(lambda: (configuration: CameraConfiguration) -> Unit) {
-    mutex.withLock {
-      Log.i(TAG, "Updating CameraSession Configuration...")
+  override fun close() {
+    Log.i(TAG, "Closing CameraSession...")
+    isDestroyed = true
+    runBlocking {
+      mutex.withLock {
+        destroy()
+        photoOutputSynchronizer.clear()
+      }
+    }
+    Log.i(TAG, "CameraSession closed!")
+  }
 
+  suspend fun configure(lambda: (configuration: CameraConfiguration) -> Unit) {
+    Log.i(TAG, "configure { ... }: Waiting for lock...")
+
+    mutex.withLock {
+      // Let caller configure a new configuration for the Camera.
       val config = CameraConfiguration.copyOf(this.configuration)
       lambda(config)
       val diff = CameraConfiguration.difference(this.configuration, config)
+      this.configuration = config
 
-      if (!diff.hasAnyDifference) {
-        Log.w(TAG, "Called configure(...) but nothing changed...")
-        return
+      if (!diff.hasChanges) {
+        Log.i(TAG, "Nothing changed, aborting configure { ... }")
+        return@withLock
       }
 
+      if (isDestroyed) {
+        Log.i(TAG, "CameraSession is already destroyed. Skipping configure { ... }")
+        return@withLock
+      }
+
+      Log.i(TAG, "configure { ... }: Updating CameraSession Configuration... $diff")
+
       try {
-        // Build up session or update any props
-        if (diff.deviceChanged) {
-          // 1. cameraId changed, open device
-          configureCameraDevice(config)
-        }
-        if (diff.outputsChanged) {
-          // 2. outputs changed, build new session
-          configureOutputs(config)
-        }
-        if (diff.sidePropsChanged) {
-          // 3. zoom etc changed, update repeating request
-          configureCaptureRequest(config)
+        captureSession.withConfiguration {
+          // Build up session or update any props
+          if (diff.deviceChanged) {
+            // 1. cameraId changed, open device
+            configureInput(config)
+          }
+          if (diff.outputsChanged) {
+            // 2. outputs changed, build new session
+            configureOutputs(config)
+          }
+          if (diff.sidePropsChanged) {
+            // 3. zoom etc changed, update repeating request
+            configureCaptureRequest(config)
+          }
+          if (diff.isActiveChanged) {
+            // 4. Either start or stop the session
+            val isActive = config.isActive && config.preview.isEnabled
+            captureSession.setIsActive(isActive)
+          }
         }
 
-        Log.i(TAG, "Successfully updated CameraSession Configuration! isActive: ${config.isActive}")
-        this.configuration = config
+        Log.i(
+          TAG,
+          "configure { ... }: Completed CameraSession Configuration! (isActive: ${config.isActive}, isRunning: ${captureSession.isRunning})"
+        )
+        isRunning = captureSession.isRunning
 
         // Notify about Camera initialization
         if (diff.deviceChanged) {
           callback.onInitialized()
         }
       } catch (error: Throwable) {
-        Log.e(TAG, "Failed to configure CameraSession! Error: ${error.message}, Config-Diff: $diff", error)
+        Log.e(TAG, "Failed to configure CameraSession! Error: ${error.message}, isRunning: $isRunning, Config-Diff: $diff", error)
         callback.onError(error)
       }
     }
@@ -156,15 +161,8 @@ class CameraSession(private val context: Context, private val cameraManager: Cam
 
   private fun destroy() {
     Log.i(TAG, "Destroying session..")
-    captureSession?.stopRepeating()
-    captureSession?.close()
-    captureSession = null
+    captureSession.close()
 
-    cameraDevice?.close()
-    cameraDevice = null
-
-    previewOutput?.close()
-    previewOutput = null
     photoOutput?.close()
     photoOutput = null
     videoOutput?.close()
@@ -172,7 +170,6 @@ class CameraSession(private val context: Context, private val cameraManager: Cam
     codeScannerOutput?.close()
     codeScannerOutput = null
 
-    configuration = null
     isRunning = false
   }
 
@@ -201,7 +198,7 @@ class CameraSession(private val context: Context, private val cameraManager: Cam
 
   private fun createPreviewOutput(surface: Surface) {
     Log.i(TAG, "Setting Preview Output...")
-    launch {
+    coroutineScope.launch {
       configure { config ->
         config.preview = CameraConfiguration.Output.Enabled.create(CameraConfiguration.Preview(surface))
       }
@@ -210,84 +207,67 @@ class CameraSession(private val context: Context, private val cameraManager: Cam
 
   private fun destroyPreviewOutputSync() {
     Log.i(TAG, "Destroying Preview Output...")
+    // This needs to run synchronously because after this method returns, the Preview Surface is no longer valid,
+    // and trying to use it will crash. This might result in a short UI Thread freeze though.
     runBlocking {
       configure { config ->
         config.preview = CameraConfiguration.Output.Disabled.create()
       }
     }
+    Log.i(TAG, "Preview Output destroyed!")
   }
 
-  /**
-   * Set up the `CameraDevice` (`cameraId`)
-   */
-  private suspend fun configureCameraDevice(configuration: CameraConfiguration) {
+  private fun configureInput(configuration: CameraConfiguration) {
+    Log.i(TAG, "Configuring inputs for CameraSession...")
     val cameraId = configuration.cameraId ?: throw NoCameraDeviceError()
-
-    Log.i(TAG, "Configuring Camera #$cameraId...")
-
-    cameraDevice?.close()
-    cameraDevice = cameraManager.openCamera(cameraId, { device, error ->
-      if (this.cameraDevice == device) {
-        Log.e(TAG, "Camera Device $device has been disconnected!", error)
-        isRunning = false
-        callback.onError(error)
-      } else {
-        // a previous device has been disconnected, but we already have a new one.
-        // this is just normal behavior
-      }
-    }, CameraQueues.cameraQueue)
-
-    // Update PreviewView's Surface Size to a supported value from this Capture Device
-    previewView?.resizeToInputCamera(cameraId, cameraManager, configuration.format)
-
-    Log.i(TAG, "Successfully configured Camera #$cameraId!")
+    val status = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+    if (status != PackageManager.PERMISSION_GRANTED) throw CameraPermissionError()
+    isRunning = false
+    captureSession.setInput(cameraId)
   }
 
   /**
    * Set up the `CaptureSession` with all outputs (preview, photo, video, codeScanner) and their HDR/Format settings.
    */
   private suspend fun configureOutputs(configuration: CameraConfiguration) {
-    val cameraDevice = cameraDevice ?: throw NoCameraDeviceError()
-    val characteristics = cameraManager.getCameraCharacteristics(cameraDevice.id)
-    val format = configuration.format
+    val cameraId = configuration.cameraId ?: throw NoCameraDeviceError()
 
-    Log.i(TAG, "Configuring Session for Camera #${cameraDevice.id}...")
-
-    // TODO: Do we want to skip this is this.cameraSession already contains all outputs?
-    // Destroy previous CaptureSession
-    captureSession?.close()
-    captureSession = null
     // Destroy previous outputs
+    Log.i(TAG, "Destroying previous outputs...")
     photoOutput?.close()
     photoOutput = null
     videoOutput?.close()
     videoOutput = null
-    previewOutput?.close()
-    previewOutput = null
     codeScannerOutput?.close()
     codeScannerOutput = null
+    isRunning = false
 
-    val isSelfie = characteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
+    val deviceDetails = CameraDeviceDetails(cameraManager, cameraId)
+    val format = configuration.format
 
-    val outputs = mutableListOf<OutputConfiguration>()
+    Log.i(TAG, "Creating outputs for Camera #$cameraId...")
+
+    val isSelfie = deviceDetails.lensFacing == LensFacing.FRONT
+
+    val outputs = mutableListOf<SurfaceOutput>()
 
     // Photo Output
     val photo = configuration.photo as? CameraConfiguration.Output.Enabled<CameraConfiguration.Photo>
     if (photo != null) {
-      val imageFormat = ImageFormat.JPEG
-      val sizes = characteristics.getPhotoSizes(imageFormat)
+      val imageFormat = deviceDetails.photoFormat
+      val sizes = deviceDetails.getPhotoSizes()
       val size = sizes.closestToOrMax(format?.photoSize)
-      val maxImages = 3
+      val maxImages = 10
 
-      Log.i(TAG, "Adding ${size.width} x ${size.height} Photo Output in Format #$imageFormat...")
+      Log.i(TAG, "Adding ${size.width}x${size.height} Photo Output in ${ImageFormatUtils.imageFormatToString(imageFormat)}...")
       val imageReader = ImageReader.newInstance(size.width, size.height, imageFormat, maxImages)
       imageReader.setOnImageAvailableListener({ reader ->
         Log.i(TAG, "Photo Captured!")
         val image = reader.acquireLatestImage()
         onPhotoCaptured(image)
       }, CameraQueues.cameraQueue.handler)
-      val output = PhotoOutput(imageReader, configuration.photoHdr)
-      outputs.add(output.toOutputConfiguration(characteristics))
+      val output = PhotoOutput(imageReader, photo.config.enableHdr)
+      outputs.add(output)
       photoOutput = output
     }
 
@@ -295,19 +275,21 @@ class CameraSession(private val context: Context, private val cameraManager: Cam
     val video = configuration.video as? CameraConfiguration.Output.Enabled<CameraConfiguration.Video>
     if (video != null) {
       val imageFormat = video.config.pixelFormat.toImageFormat()
-      val sizes = characteristics.getVideoSizes(cameraDevice.id, imageFormat)
+      val sizes = deviceDetails.getVideoSizes(imageFormat)
       val size = sizes.closestToOrMax(format?.videoSize)
 
-      Log.i(TAG, "Adding ${size.width} x ${size.height} Video Output in Format #$imageFormat...")
+      Log.i(TAG, "Adding ${size.width}x${size.height} Video Output in ${ImageFormatUtils.imageFormatToString(imageFormat)}...")
       val videoPipeline = VideoPipeline(
         size.width,
         size.height,
         video.config.pixelFormat,
         isSelfie,
-        video.config.enableFrameProcessor
+        video.config.enableFrameProcessor,
+        video.config.enableGpuBuffers,
+        callback
       )
-      val output = VideoPipelineOutput(videoPipeline, configuration.videoHdr)
-      outputs.add(output.toOutputConfiguration(characteristics))
+      val output = VideoPipelineOutput(videoPipeline, video.config.enableHdr)
+      outputs.add(output)
       videoOutput = output
     }
 
@@ -316,186 +298,99 @@ class CameraSession(private val context: Context, private val cameraManager: Cam
     if (preview != null) {
       // Compute Preview Size based on chosen video size
       val videoSize = videoOutput?.size ?: format?.videoSize
-      val size = if (videoSize != null) {
-        val formatAspectRatio = videoSize.bigger.toDouble() / videoSize.smaller
-        characteristics.getPreviewTargetSize(formatAspectRatio)
-      } else {
-        characteristics.getPreviewTargetSize(null)
-      }
+      val sizes = deviceDetails.getPreviewSizes()
+      val size = sizes.closestToOrMax(videoSize)
 
-      Log.i(TAG, "Adding ${size.width} x ${size.height} Preview Output...")
+      val enableHdr = video?.config?.enableHdr ?: false
+
+      Log.i(TAG, "Adding ${size.width}x${size.height} Preview Output...")
       val output = SurfaceOutput(
         preview.config.surface,
         size,
         SurfaceOutput.OutputType.PREVIEW,
-        configuration.videoHdr
+        enableHdr
       )
-      outputs.add(output.toOutputConfiguration(characteristics))
-      previewOutput = output
-      previewView?.size = size
+      outputs.add(output)
+      // Size is usually landscape, so we flip it here
+      previewView?.setSurfaceSize(size.width, size.height, deviceDetails.sensorOrientation)
     }
 
     // CodeScanner Output
     val codeScanner = configuration.codeScanner as? CameraConfiguration.Output.Enabled<CameraConfiguration.CodeScanner>
     if (codeScanner != null) {
+      if (video != null) {
+        // CodeScanner and VideoPipeline are two repeating streams - they cannot be both added.
+        // In this case, the user should use a Frame Processor Plugin for code scanning instead.
+        throw CodeScannerTooManyOutputsError()
+      }
+
       val imageFormat = ImageFormat.YUV_420_888
-      val sizes = characteristics.getVideoSizes(cameraDevice.id, imageFormat)
+      val sizes = deviceDetails.getVideoSizes(imageFormat)
       val size = sizes.closestToOrMax(Size(1280, 720))
 
-      Log.i(TAG, "Adding ${size.width} x ${size.height} CodeScanner Output in Format #$imageFormat...")
+      Log.i(TAG, "Adding ${size.width}x${size.height} CodeScanner Output in ${ImageFormatUtils.imageFormatToString(imageFormat)}...")
       val pipeline = CodeScannerPipeline(size, imageFormat, codeScanner.config, callback)
       val output = BarcodeScannerOutput(pipeline)
-      outputs.add(output.toOutputConfiguration(characteristics))
+      outputs.add(output)
       codeScannerOutput = output
     }
 
-    // Create new session
-    captureSession = cameraDevice.createCaptureSession(cameraManager, outputs, { session ->
-      if (this.captureSession == session) {
-        Log.i(TAG, "Camera Session $session has been closed!")
-        isRunning = false
-      }
-    }, CameraQueues.cameraQueue)
+    // Create session
+    captureSession.setOutputs(outputs)
 
-    Log.i(TAG, "Successfully configured Session with ${outputs.size} outputs for Camera #${cameraDevice.id}!")
+    Log.i(TAG, "Successfully configured Session with ${outputs.size} outputs for Camera #$cameraId!")
 
     // Update Frame Processor and RecordingSession for newly changed output
     updateVideoOutputs()
   }
 
   private fun configureCaptureRequest(config: CameraConfiguration) {
-    if (!config.isActive) {
-      // TODO: Do we want to do stopRepeating() or entirely destroy the session?
-      // If the Camera is not active, we don't do anything.
-      captureSession?.stopRepeating()
-      return
-    }
+    val video = config.video as? CameraConfiguration.Output.Enabled<CameraConfiguration.Video>
+    val enableVideo = video != null
+    val enableVideoHdr = video?.config?.enableHdr == true
 
-    val device = cameraDevice ?: throw NoCameraDeviceError()
-    val captureSession = captureSession ?: throw CameraNotReadyError()
-
-    val previewOutput = previewOutput
-    if (previewOutput == null) {
-      Log.w(TAG, "Preview Output is null, aborting...")
-      return
-    }
-
-    val cameraCharacteristics = cameraManager.getCameraCharacteristics(device.id)
-
-    val template = if (config.video.isEnabled) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW
-    val captureRequest = device.createCaptureRequest(template)
-
-    captureRequest.addTarget(previewOutput.surface)
-    videoOutput?.let { output ->
-      captureRequest.addTarget(output.surface)
-    }
-    codeScannerOutput?.let { output ->
-      captureRequest.addTarget(output.surface)
-    }
-
-    // Set FPS
-    // TODO: Check if the FPS range is actually supported in the current configuration.
-    var fps = config.fps
-    if (fps != null) {
-      if (!CAN_DO_60_FPS) {
-        // If we can't do 60 FPS, we clamp it to 30 FPS - that's always supported.
-        fps = 30.coerceAtMost(fps)
-      }
-      captureRequest.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(fps, fps))
-    }
-
-    // Set Video Stabilization
-    when (config.videoStabilizationMode) {
-      VideoStabilizationMode.OFF -> {
-        // do nothing
-      }
-      VideoStabilizationMode.STANDARD -> {
-        // TODO: Check if that stabilization mode is even supported
-        val mode = if (Build.VERSION.SDK_INT >=
-          Build.VERSION_CODES.TIRAMISU
-        ) {
-          CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION
-        } else {
-          CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON
-        }
-        captureRequest.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, mode)
-      }
-      VideoStabilizationMode.CINEMATIC, VideoStabilizationMode.CINEMATIC_EXTENDED -> {
-        // TODO: Check if that stabilization mode is even supported
-        captureRequest.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON)
-      }
-    }
-
-    // Set HDR
-    // TODO: Check if that value is even supported
-    if (config.videoHdr) {
-      captureRequest.set(CaptureRequest.CONTROL_SCENE_MODE, CaptureRequest.CONTROL_SCENE_MODE_HDR)
-    } else if (config.enableLowLightBoost) {
-      captureRequest.set(CaptureRequest.CONTROL_SCENE_MODE, CaptureRequest.CONTROL_SCENE_MODE_NIGHT)
-    }
-
-    // Set Exposure Bias
-    // TODO: Check if that exposure value is even supported
-    val exposure = config.exposure?.toInt()
-    if (exposure != null) {
-      captureRequest.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, exposure)
-    }
-
-    // Set Zoom
-    // TODO: Check if that zoom value is even supported
-    captureRequest.setZoom(config.zoom, cameraCharacteristics)
-
-    // Set Torch
-    // TODO: Check if torch is even supported
-    if (config.torch == Torch.ON) {
-      captureRequest.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH)
-    }
-
-    // Start repeating request if the Camera is active
-    val request = captureRequest.build()
-    captureSession.setRepeatingRequest(request, null, null)
-    isRunning = true
+    captureSession.setRepeatingRequest(
+      RepeatingCaptureRequest(
+        enableVideo,
+        config.torch,
+        config.fps,
+        config.videoStabilizationMode,
+        enableVideoHdr,
+        config.enableLowLightBoost,
+        config.exposure,
+        config.zoom,
+        config.format
+      )
+    )
   }
 
   suspend fun takePhoto(
     qualityPrioritization: QualityPrioritization,
-    flashMode: Flash,
+    flash: Flash,
     enableShutterSound: Boolean,
-    enableRedEyeReduction: Boolean,
     enableAutoStabilization: Boolean,
     outputOrientation: Orientation
   ): CapturedPhoto {
-    val captureSession = captureSession ?: throw CameraNotReadyError()
     val photoOutput = photoOutput ?: throw PhotoNotEnabledError()
 
-    Log.i(TAG, "Photo capture 0/3 - preparing capture request (${photoOutput.size.width}x${photoOutput.size.height})...")
-
-    val zoom = configuration?.zoom ?: 1f
-
-    val cameraCharacteristics = cameraManager.getCameraCharacteristics(captureSession.device.id)
-    val orientation = outputOrientation.toSensorRelativeOrientation(cameraCharacteristics)
-    val enableHdr = configuration?.photoHdr ?: false
-    val captureRequest = captureSession.device.createPhotoCaptureRequest(
-      cameraManager,
-      photoOutput.surface,
-      zoom,
+    Log.i(TAG, "Photo capture 1/3 - capturing ${photoOutput.size.width}x${photoOutput.size.height} image...")
+    val result = captureSession.capture(
       qualityPrioritization,
-      flashMode,
-      enableRedEyeReduction,
+      flash,
       enableAutoStabilization,
-      enableHdr,
-      orientation
+      photoOutput.enableHdr,
+      outputOrientation,
+      enableShutterSound
     )
-    Log.i(TAG, "Photo capture 1/3 - starting capture...")
-    val result = captureSession.capture(captureRequest, enableShutterSound)
-    val timestamp = result[CaptureResult.SENSOR_TIMESTAMP]!!
-    Log.i(TAG, "Photo capture 2/3 complete - received metadata with timestamp $timestamp")
+
     try {
+      val timestamp = result[CaptureResult.SENSOR_TIMESTAMP]!!
+      Log.i(TAG, "Photo capture 2/3 - waiting for image with timestamp $timestamp now...")
       val image = photoOutputSynchronizer.await(timestamp)
 
-      val isMirrored = cameraCharacteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
-
-      Log.i(TAG, "Photo capture 3/3 complete - received ${image.width} x ${image.height} image.")
+      Log.i(TAG, "Photo capture 3/3 - received ${image.width} x ${image.height} image, preparing result...")
+      val deviceDetails = captureSession.getActiveDeviceDetails()
+      val isMirrored = deviceDetails?.lensFacing == LensFacing.FRONT
       return CapturedPhoto(image, result, orientation, isMirrored, image.format)
     } catch (e: CancellationException) {
       throw CaptureAbortedError(false)
@@ -510,26 +405,34 @@ class CameraSession(private val context: Context, private val cameraManager: Cam
   private fun updateVideoOutputs() {
     val videoOutput = videoOutput ?: return
     Log.i(TAG, "Updating Video Outputs...")
-    videoOutput.videoPipeline.setFrameProcessorOutput(frameProcessor)
     videoOutput.videoPipeline.setRecordingSessionOutput(recording)
   }
 
   suspend fun startRecording(
     enableAudio: Boolean,
-    codec: VideoCodec,
-    fileType: VideoFileType,
-    bitRate: Double?,
+    options: RecordVideoOptions,
     callback: (video: RecordingSession.Video) -> Unit,
-    onError: (error: RecorderError) -> Unit
+    onError: (error: CameraError) -> Unit
   ) {
     mutex.withLock {
       if (recording != null) throw RecordingInProgressError()
       val videoOutput = videoOutput ?: throw VideoNotEnabledError()
+      val cameraId = configuration?.cameraId ?: throw NoCameraDeviceError()
 
       val fps = configuration?.fps ?: 30
 
-      val recording =
-        RecordingSession(context, videoOutput.size, enableAudio, fps, codec, orientation, fileType, bitRate, callback, onError)
+      val recording = RecordingSession(
+        context,
+        cameraId,
+        videoOutput.size,
+        enableAudio,
+        fps,
+        videoOutput.enableHdr,
+        orientation,
+        options,
+        callback,
+        onError
+      )
       recording.start()
       this.recording = recording
     }
@@ -558,52 +461,16 @@ class CameraSession(private val context: Context, private val cameraManager: Cam
     }
   }
 
-  suspend fun focus(x: Int, y: Int) {
-    val captureSession = captureSession ?: throw CameraNotReadyError()
-    val previewOutput = previewOutput ?: throw CameraNotReadyError()
-    val characteristics = cameraManager.getCameraCharacteristics(captureSession.device.id)
-    val sensorSize = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)!!
-    val previewSize = previewOutput.size
-    val pX = x.toDouble() / previewSize.width * sensorSize.height()
-    val pY = y.toDouble() / previewSize.height * sensorSize.width()
-    val point = Point(pX.toInt(), pY.toInt())
-
-    Log.i(TAG, "Focusing (${point.x}, ${point.y})...")
-    focus(point)
+  override fun onError(error: Throwable) {
+    callback.onError(error)
   }
 
-  private suspend fun focus(point: Point) {
-    mutex.withLock {
-      // TODO: Fix this method
-      val captureSession = captureSession ?: throw CameraNotReadyError()
-      val request = previewRequest ?: throw CameraNotReadyError()
+  suspend fun focus(x: Int, y: Int) {
+    val previewView = previewView ?: throw CameraNotReadyError()
+    val deviceDetails = captureSession.getActiveDeviceDetails() ?: throw CameraNotReadyError()
 
-      val weight = MeteringRectangle.METERING_WEIGHT_MAX - 1
-      val focusAreaTouch = MeteringRectangle(point, Size(150, 150), weight)
-
-      // Quickly pause preview
-      captureSession.stopRepeating()
-
-      request.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL)
-      request.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
-      captureSession.capture(request.build(), null, null)
-
-      // Add AF trigger with focus region
-      val characteristics = cameraManager.getCameraCharacteristics(captureSession.device.id)
-      val maxSupportedFocusRegions = characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE) ?: 0
-      if (maxSupportedFocusRegions >= 1) {
-        request.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(focusAreaTouch))
-      }
-      request.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
-      request.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO)
-      request.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START)
-
-      captureSession.capture(request.build(), false)
-
-      // Resume preview
-      request.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE)
-      captureSession.setRepeatingRequest(request.build(), null, null)
-    }
+    val cameraPoint = previewView.convertLayerPointToCameraCoordinates(Point(x, y), deviceDetails)
+    captureSession.focus(cameraPoint)
   }
 
   data class CapturedPhoto(
@@ -618,9 +485,12 @@ class CameraSession(private val context: Context, private val cameraManager: Cam
     }
   }
 
-  interface CameraSessionCallback {
+  interface Callback {
     fun onError(error: Throwable)
+    fun onFrame(frame: Frame)
     fun onInitialized()
+    fun onStarted()
+    fun onStopped()
     fun onCodeScanned(codes: List<Barcode>, scannerFrame: CodeScannerFrame)
   }
 }

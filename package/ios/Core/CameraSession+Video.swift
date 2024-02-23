@@ -43,14 +43,6 @@ extension CameraSession {
               self.deactivateAudioSession()
             }
           }
-          // Reset flash
-          if options.flash != .off {
-            // Set torch mode back to what it was before if we used it for the video flash.
-            self.configure { config in
-              let torch = self.configuration?.torch ?? .off
-              config.torch = torch
-            }
-          }
         }
 
         self.isRecording = false
@@ -62,6 +54,8 @@ extension CameraSession {
           // Something went wrong, we have an error
           if error.domain == "capture/aborted" {
             onError(.capture(.aborted))
+          } else if error.code == -11807 {
+            onError(.capture(.insufficientStorage))
           } else {
             onError(.capture(.unknown(message: "An unknown recording error occured! \(error.code) \(error.description)")))
           }
@@ -69,7 +63,8 @@ extension CameraSession {
           if status == .completed {
             // Recording was successfully saved
             let video = Video(path: recordingSession.url.absoluteString,
-                              duration: recordingSession.duration)
+                              duration: recordingSession.duration,
+                              size: recordingSession.size ?? CGSize.zero)
             onVideoRecorded(video)
           } else {
             // Recording wasn't saved and we don't have an error either.

@@ -13,9 +13,9 @@ module.exports = {
         label: 'Realtime Frame Processing',
         items: [
           'guides/frame-processors',
+          'guides/frame-processor-plugins',
           'guides/pixel-formats',
           'guides/frame-processors-tips',
-          'guides/frame-processor-plugin-list',
           'guides/skia-frame-processors',
           {
             type: 'category',
@@ -24,6 +24,7 @@ module.exports = {
               'guides/frame-processors-plugins-overview',
               'guides/frame-processors-plugins-ios',
               'guides/frame-processors-plugins-android',
+              'guides/frame-processors-plugins-cpp',
               'guides/frame-processors-plugins-final',
             ]
           },
@@ -38,6 +39,7 @@ module.exports = {
       'guides/errors',
       'guides/mocking',
       'guides/troubleshooting',
+      'guides/shadowlens',
     ],
     API: [
       {

@@ -10,6 +10,7 @@ import com.facebook.react.modules.core.PermissionAwareActivity
 import com.facebook.react.modules.core.PermissionListener
 import com.facebook.react.uimanager.UIManagerHelper
 import com.mrousavy.camera.core.CameraError
+import com.mrousavy.camera.core.CameraQueues
 import com.mrousavy.camera.core.ViewNotFoundError
 import com.mrousavy.camera.frameprocessor.VisionCameraInstaller
 import com.mrousavy.camera.frameprocessor.VisionCameraProxy
@@ -26,9 +27,20 @@ class CameraViewModule(reactContext: ReactApplicationContext) : ReactContextBase
   companion object {
     const val TAG = "CameraView"
     var sharedRequestCode = 10
+
+    init {
+      try {
+        // Load the native part of VisionCamera.
+        // Includes the OpenGL VideoPipeline, as well as Frame Processor JSI bindings
+        System.loadLibrary("VisionCamera")
+      } catch (e: UnsatisfiedLinkError) {
+        Log.e(VisionCameraProxy.TAG, "Failed to load VisionCamera C++ library!", e)
+        throw e
+      }
+    }
   }
 
-  private val coroutineScope = CoroutineScope(Dispatchers.Default) // TODO: or Dispatchers.Main?
+  private val coroutineScope = CoroutineScope(CameraQueues.cameraQueue.coroutineDispatcher)
 
   override fun invalidate() {
     super.invalidate()
@@ -83,10 +95,11 @@ class CameraViewModule(reactContext: ReactApplicationContext) : ReactContextBase
 
   // TODO: startRecording() cannot be awaited, because I can't have a Promise and a onRecordedCallback in the same function. Hopefully TurboModules allows that
   @ReactMethod
-  fun startRecording(viewTag: Int, options: ReadableMap, onRecordCallback: Callback) {
+  fun startRecording(viewTag: Int, jsOptions: ReadableMap, onRecordCallback: Callback) {
     coroutineScope.launch {
       val view = findCameraView(viewTag)
       try {
+        val options = RecordVideoOptions(jsOptions)
         view.startRecording(options, onRecordCallback)
       } catch (error: CameraError) {
         val map = makeErrorMap("${error.domain}/${error.id}", error.message, error)
@@ -148,24 +161,24 @@ class CameraViewModule(reactContext: ReactApplicationContext) : ReactContextBase
     return activity?.shouldShowRequestPermissionRationale(permission) ?: false
   }
 
-  @ReactMethod
-  fun getCameraPermissionStatus(promise: Promise) {
+  @ReactMethod(isBlockingSynchronousMethod = true)
+  fun getCameraPermissionStatus(): String {
     val status = ContextCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.CAMERA)
     var parsed = PermissionStatus.fromPermissionStatus(status)
     if (parsed == PermissionStatus.DENIED && canRequestPermission(Manifest.permission.CAMERA)) {
       parsed = PermissionStatus.NOT_DETERMINED
     }
-    promise.resolve(parsed.unionValue)
+    return parsed.unionValue
   }
 
-  @ReactMethod
-  fun getMicrophonePermissionStatus(promise: Promise) {
+  @ReactMethod(isBlockingSynchronousMethod = true)
+  fun getMicrophonePermissionStatus(): String {
     val status = ContextCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.RECORD_AUDIO)
     var parsed = PermissionStatus.fromPermissionStatus(status)
     if (parsed == PermissionStatus.DENIED && canRequestPermission(Manifest.permission.RECORD_AUDIO)) {
       parsed = PermissionStatus.NOT_DETERMINED
     }
-    promise.resolve(parsed.unionValue)
+    return parsed.unionValue
   }
 
   @ReactMethod
