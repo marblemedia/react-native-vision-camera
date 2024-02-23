@@ -33,15 +33,14 @@ using namespace facebook;
 - (Frame* _Nullable)callWithFrameHostObject:(std::shared_ptr<FrameHostObject>)frameHostObject {
   // Call the Frame Processor on the Worklet Runtime
   jsi::Runtime& runtime = _workletContext->getWorkletRuntime();
-
+  
   // Wrap HostObject as JSI Value
   auto argument = jsi::Object::createFromHostObject(runtime, frameHostObject);
   jsi::Value jsValue(std::move(argument));
-
+  try {
     // Call the Worklet with the Frame JS Host Object as an argument
     auto frameProcessorResult = _workletInvoker->call(runtime, jsi::Value::undefined(), &jsValue, 1);
     // If we didn't return a frame, return nil
-    // TODO: This doesn't return anything, the result is always undefined...
     if (frameProcessorResult.isUndefined()) {
       return nil;
     }
@@ -53,7 +52,7 @@ using namespace facebook;
   } catch (jsi::JSError& jsError) {
     // JS Error occured, print it to console.
     auto message = jsError.getMessage();
-
+    
     _workletContext->invokeOnJsThread([message](jsi::Runtime& jsRuntime) {
       auto logFn = jsRuntime.global().getPropertyAsObject(jsRuntime, "console").getPropertyAsFunction(jsRuntime, "error");
       logFn.call(jsRuntime, jsi::String::createFromUtf8(jsRuntime, "Frame Processor threw an error: " + message));

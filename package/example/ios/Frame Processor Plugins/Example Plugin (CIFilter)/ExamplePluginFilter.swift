@@ -25,8 +25,8 @@ public class ExamplePluginFilter: FrameProcessorPlugin {
   private var initialising = false
   private var pixelBufferPool: CVPixelBufferPool? = nil
   
-  public override init(options: [AnyHashable: Any]! = [:]) {
-    super.init(options: options)
+  public override init(proxy: VisionCameraProxyHolder, options: [AnyHashable : Any]? = nil) {
+    super.init(proxy: proxy, options: options)
 
     print("ExamplePluginFilter initialized with options: \(String(describing: options))")
   }

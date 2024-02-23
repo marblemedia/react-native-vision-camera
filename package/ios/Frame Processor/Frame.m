@@ -19,7 +19,7 @@
 - (instancetype)initWithBuffer:(CMSampleBufferRef)buffer orientation:(UIImageOrientation)orientation {
   self = [super init];
   if (self) {
-    hasRetainedBuffer = false;
+    _hasRetainedBuffer = false;
     _buffer = buffer;
     _orientation = orientation;
     CFRetain(buffer);
@@ -31,7 +31,7 @@
   self = [super init];
   if (self) {
     CFRetain(buffer);
-    hasRetainedBuffer = true;
+    _hasRetainedBuffer = true;
     _buffer = buffer;
     _orientation = orientation;
   }
@@ -39,16 +39,14 @@
 }
 
 - (void) dealloc {
-  if (hasRetainedBuffer == false) {
+  if (_hasRetainedBuffer == false) {
+    CFRelease(_buffer);
     return;
   }
   CMSampleBufferInvalidate(_buffer);
   CFRelease(_buffer);
-  buffer = NULL;
+  _buffer = NULL;
 }
-
-@synthesize buffer = _buffer;
-@synthesize orientation = _orientation;
 
 - (CMSampleBufferRef)buffer {
   return _buffer;
