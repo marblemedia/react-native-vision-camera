@@ -108,20 +108,25 @@ public final class CameraView: UIView, CameraSessionDelegate {
     
   func configurePreviewView(frame: CGRect) {
     DispatchQueue.main.async { [self] in
-      // Remove any existing views
-      previewView?.videoPreviewLayer.session = nil
-      previewView?.videoPreviewLayer.removeFromSuperlayer()
-      previewView = nil
-      metalPreviewView?.removeFromSuperview()
-      metalPreviewView = nil
-      // Setup the desired view
-      if displayType == "system" {
+      if previewView == nil {
         previewView = cameraSession.createPreviewView(frame: frame)
+        previewView?.alpha = 0.0
         addSubview(previewView!)
       }
-      else {
+      if metalPreviewView == nil {
         metalPreviewView = MetalPreviewView(frame: frame)
+        metalPreviewView?.alpha = 0.0
         addSubview(metalPreviewView!)
+      }
+      if displayType == "system" {
+        previewView?.videoPreviewLayer.connection?.isEnabled = true
+        previewView?.alpha = 1.0
+        metalPreviewView?.alpha = 0.0
+      }
+      else {
+        previewView?.videoPreviewLayer.connection?.isEnabled = false
+        previewView?.alpha = 0.0
+        metalPreviewView?.alpha = 1.0
       }
     }
   }
@@ -146,6 +151,9 @@ public final class CameraView: UIView, CameraSessionDelegate {
     guard let previewView = previewView else { return }
     previewView.frame = frame
     previewView.bounds = bounds
+    guard let metalPreviewView = metalPreviewView else { return }
+    metalPreviewView.frame = frame
+    metalPreviewView.bounds = bounds
   }
 
   func getPixelFormat() -> PixelFormat {
