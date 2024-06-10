@@ -37,11 +37,7 @@ public final class CameraView: UIView, CameraSessionDelegate, FpsSampleCollector
   @objc var codeScannerOptions: NSDictionary?
   @objc var pixelFormat: NSString?
   @objc var enableLocation = false
-  @objc var preview = true {
-    didSet {
-      updatePreview()
-    }
-  }
+  @objc var preview = true
 
   // props that require format reconfiguring
   @objc var format: NSDictionary?
@@ -58,11 +54,7 @@ public final class CameraView: UIView, CameraSessionDelegate, FpsSampleCollector
   @objc var zoom: NSNumber = 1.0 // in "factor"
   @objc var exposure: NSNumber = 0.0
   @objc var videoStabilizationMode: NSString?
-  @objc var resizeMode: NSString = "cover" {
-    didSet {
-      updatePreview()
-    }
-  }
+  @objc var resizeMode: NSString = "cover"
 
   // events
   @objc var onInitialized: RCTDirectEventBlock?
@@ -118,6 +110,7 @@ public final class CameraView: UIView, CameraSessionDelegate, FpsSampleCollector
       // Remove any existing views
       previewView?.videoPreviewLayer.session = nil
       previewView?.videoPreviewLayer.removeFromSuperlayer()
+      previewView?.removeFromSuperview()
       previewView = nil
       metalPreviewView?.removeFromSuperview()
       metalPreviewView = nil
@@ -125,6 +118,12 @@ public final class CameraView: UIView, CameraSessionDelegate, FpsSampleCollector
       if displayType == "system" {
         previewView = cameraSession.createPreviewView(frame: frame)
         addSubview(previewView!)
+        
+        if let previewView {
+          // Update resizeMode from React
+          let parsed = try? ResizeMode(jsValue: resizeMode as String)
+          previewView.resizeMode = parsed ?? .cover
+        }
       }
       else {
         metalPreviewView = MetalPreviewView(frame: frame)
@@ -296,24 +295,6 @@ public final class CameraView: UIView, CameraSessionDelegate, FpsSampleCollector
 
     // Prevent phone from going to sleep
     UIApplication.shared.isIdleTimerDisabled = isActive
-  }
-
-  func updatePreview() {
-    if preview && previewView == nil {
-      // Create PreviewView and add it
-      previewView = cameraSession.createPreviewView(frame: frame)
-      addSubview(previewView!)
-    } else if !preview && previewView != nil {
-      // Remove PreviewView and destroy it
-      previewView?.removeFromSuperview()
-      previewView = nil
-    }
-
-    if let previewView {
-      // Update resizeMode from React
-      let parsed = try? ResizeMode(jsValue: resizeMode as String)
-      previewView.resizeMode = parsed ?? .cover
-    }
   }
 
   // pragma MARK: Event Invokers
