@@ -398,7 +398,7 @@ public final class CameraView: UIView, CameraSessionDelegate, FpsSampleCollector
     #if VISION_CAMERA_ENABLE_FRAME_PROCESSORS
       if let frameProcessor = frameProcessor {
         // Call Frame Processor
-        let frame = Frame(buffer: sampleBuffer, orientation: .up)
+        let frame = Frame(buffer: sampleBuffer, orientation: orientation.imageOrientation)
         let presentationFrame = frameProcessor.call(frame)
         // If a frame was returned then present it
         guard let presentationFrame = presentationFrame else { return }
