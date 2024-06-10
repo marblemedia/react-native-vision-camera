@@ -41,7 +41,9 @@ public class ExamplePluginFilter: FrameProcessorPlugin {
     }
     // For now we have to create the pixel buffer pool here as we don't have access to the
     // format description easily in the init...
-    if initialising { return frame }
+    if initialising {
+      return frame
+    }
     if pixelBufferPool == nil {
       initialising = true
       pixelBufferPool = allocateBufferPool(inputFormatDescription: formatDescription)
@@ -87,7 +89,8 @@ public class ExamplePluginFilter: FrameProcessorPlugin {
       print("Could not create output sample buffer - failed with status: \(createSampleBufferStatus)")
       return frame
     }
-    let outputFrame = Frame(retainedBuffer: sampleBufferOut, orientation: frame.orientation)
+    let outputFrame = Frame(buffer: sampleBufferOut, orientation: frame.orientation)
+    outputFrame.incrementRefCount()
     return outputFrame
     
   }

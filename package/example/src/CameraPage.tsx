@@ -1,17 +1,11 @@
 import * as React from 'react'
 import { useRef, useState, useCallback, useMemo } from 'react'
-import { GestureResponderEvent, StyleSheet, Text, View } from 'react-native'
-import { PinchGestureHandler, PinchGestureHandlerGestureEvent, TapGestureHandler } from 'react-native-gesture-handler'
-import {
-  CameraRuntimeError,
-  DisplayType,
-  PhotoFile,
-  useCameraDevice,
-  useCameraFormat,
-  useFrameProcessor,
-  VideoFile,
-  CameraProps,
-} from 'react-native-vision-camera'
+import type { GestureResponderEvent } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
+import type { PinchGestureHandlerGestureEvent } from 'react-native-gesture-handler'
+import { PinchGestureHandler, TapGestureHandler } from 'react-native-gesture-handler'
+import { CameraProps, CameraRuntimeError, PhotoFile, VideoFile, DisplayType } from 'react-native-vision-camera'
+import { useCameraDevice, useCameraFormat, useFrameProcessor, useMicrophonePermission } from 'react-native-vision-camera'
 import { Camera } from 'react-native-vision-camera'
 import { CONTENT_SPACING, CONTROL_BUTTON_SIZE, MAX_ZOOM_FACTOR, SAFE_AREA_PADDING, SCREEN_HEIGHT, SCREEN_WIDTH } from './Constants'
 import Reanimated, { Extrapolate, interpolate, useAnimatedGestureHandler, useAnimatedProps, useSharedValue } from 'react-native-reanimated'
@@ -25,9 +19,9 @@ import IonIcon from 'react-native-vector-icons/Ionicons'
 import type { Routes } from './Routes'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 import { useIsFocused } from '@react-navigation/core'
+import { usePreferredCameraDevice } from './hooks/usePreferredCameraDevice'
 import { examplePlugin } from './frame-processors/ExamplePlugin'
 import { exampleKotlinSwiftPlugin } from './frame-processors/ExampleKotlinSwiftPlugin'
-import { usePreferredCameraDevice } from './hooks/usePreferredCameraDevice'
 import { examplePluginFilter } from './frame-processors/ExamplePluginFilter'
 
 const ReanimatedCamera = Reanimated.createAnimatedComponent(Camera)
@@ -41,7 +35,7 @@ type Props = NativeStackScreenProps<Routes, 'CameraPage'>
 export function CameraPage({ navigation }: Props): React.ReactElement {
   const camera = useRef<Camera>(null)
   const [isCameraInitialized, setIsCameraInitialized] = useState(false)
-  const hasMicrophonePermission = useMemo(() => Camera.getMicrophonePermissionStatus() === 'granted', [])
+  const microphone = useMicrophonePermission()
   const zoom = useSharedValue(1)
   const isPressingButton = useSharedValue(false)
 
@@ -180,6 +174,9 @@ export function CameraPage({ navigation }: Props): React.ReactElement {
     return filteredFrame
   }, [])
 
+  const videoHdr = format?.supportsVideoHdr && enableHdr
+  const photoHdr = format?.supportsPhotoHdr && enableHdr && !videoHdr
+
   return (
     <View style={styles.container}>
       {device != null && (
@@ -193,24 +190,27 @@ export function CameraPage({ navigation }: Props): React.ReactElement {
                 ref={camera}
                 onInitialized={onInitialized}
                 onError={onError}
-                onStarted={() => 'Camera started!'}
-                onStopped={() => 'Camera stopped!'}
+                onStarted={() => console.log('Camera started!')}
+                onStopped={() => console.log('Camera stopped!')}
+                onOutputOrientationChanged={(o) => console.log(`Output orientation changed to ${o}!`)}
+                onPreviewOrientationChanged={(o) => console.log(`Preview orientation changed to ${o}!`)}
                 format={format}
                 fps={fps}
-                photoHdr={format?.supportsPhotoHdr && enableHdr}
-                videoHdr={format?.supportsVideoHdr && enableHdr}
+                photoHdr={photoHdr}
+                videoHdr={videoHdr}
+                photoQualityBalance="quality"
                 lowLightBoost={device.supportsLowLightBoost && enableNightMode}
                 enableZoomGesture={false}
                 animatedProps={cameraAnimatedProps}
                 exposure={0}
                 enableFpsGraph={true}
-                orientation="portrait"
+                outputOrientation="portrait"
                 photo={true}
                 video={true}
-                audio={hasMicrophonePermission}
+                audio={microphone.hasPermission}
                 frameProcessor={frameProcessor}
                 displayType={displayType}
-                pixelFormat={displayType === DisplayType.AUGMENTED ? 'rgb' : 'native'}
+                pixelFormat={displayType === DisplayType.AUGMENTED ? 'rgb' : 'yuv'}
               />
             </TapGestureHandler>
           </Reanimated.View>

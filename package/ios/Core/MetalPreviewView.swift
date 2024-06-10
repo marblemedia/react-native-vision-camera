@@ -247,22 +247,22 @@ class MetalPreviewView: MTKView {
          */
         let baseBundle = Bundle(for: Self.self)
         guard let resourceBundleUrl = baseBundle.url(forResource: "VisionCamera", withExtension: "bundle") else {
-          ReactLogger.log(level: .error, message: "Could not find VisionCamera.bundle - check the build output to see if this exists")
+//          ReactLogger.log(level: .error, message: "Could not find VisionCamera.bundle - check the build output to see if this exists")
           return
         }
         guard let resourceBundle = Bundle(url: resourceBundleUrl) else {
-          ReactLogger.log(level: .error, message: "Cannot configure Metal renderer - no resource bundle found")
+//          ReactLogger.log(level: .error, message: "Cannot configure Metal renderer - no resource bundle found")
           return
         }
         guard let shaderLibraryUrl = resourceBundle.url(forResource: "PassThrough", withExtension: "metallib") else {
-          ReactLogger.log(level: .error, message: "Cannot configure Metal renderer - no metallib was detected")
+//          ReactLogger.log(level: .error, message: "Cannot configure Metal renderer - no metallib was detected")
           return
         }
         var mtlLibrary: MTLLibrary!
         do {
           mtlLibrary = try device!.makeLibrary(URL: shaderLibraryUrl)
         } catch {
-          ReactLogger.log(level: .error, message: "MTLLibrary could not be created: \(error)")
+//          ReactLogger.log(level: .error, message: "MTLLibrary could not be created: \(error)")
         }
       
         let pipelineDescriptor = MTLRenderPipelineDescriptor()
