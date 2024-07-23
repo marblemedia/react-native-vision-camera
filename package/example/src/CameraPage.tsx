@@ -179,7 +179,7 @@ export function CameraPage({ navigation }: Props): React.ReactElement {
 
   return (
     <View style={styles.container}>
-      {device != null && (
+      {device != null ? (
         <PinchGestureHandler onGestureEvent={onPinchGesture} enabled={isActive}>
           <Reanimated.View onTouchEnd={onFocusTap} style={StyleSheet.absoluteFill}>
             <TapGestureHandler onEnded={onDoubleTap} numberOfTaps={2}>
@@ -192,8 +192,11 @@ export function CameraPage({ navigation }: Props): React.ReactElement {
                 onError={onError}
                 onStarted={() => console.log('Camera started!')}
                 onStopped={() => console.log('Camera stopped!')}
+                onPreviewStarted={() => console.log('Preview started!')}
+                onPreviewStopped={() => console.log('Preview stopped!')}
                 onOutputOrientationChanged={(o) => console.log(`Output orientation changed to ${o}!`)}
                 onPreviewOrientationChanged={(o) => console.log(`Preview orientation changed to ${o}!`)}
+                onUIRotationChanged={(degrees) => console.log(`UI Rotation changed: ${degrees}°`)}
                 format={format}
                 fps={fps}
                 photoHdr={photoHdr}
@@ -215,6 +218,10 @@ export function CameraPage({ navigation }: Props): React.ReactElement {
             </TapGestureHandler>
           </Reanimated.View>
         </PinchGestureHandler>
+      ) : (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.text}>Your phone does not have a Camera.</Text>
+        </View>
       )}
 
       <CaptureButton
@@ -300,5 +307,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 })

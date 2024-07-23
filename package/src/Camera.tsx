@@ -24,6 +24,7 @@ import type {
   PreviewOrientationChangedEvent,
 } from './NativeCameraView'
 import { NativeCameraView } from './NativeCameraView'
+import { RotationHelper } from './RotationHelper'
 
 //#region Types
 export type CameraPermissionStatus = 'granted' | 'not-determined' | 'denied' | 'restricted'
@@ -52,8 +53,12 @@ function isSkiaFrameProcessor(frameProcessor?: ReadonlyFrameProcessor | Drawable
  *
  * The `<Camera>` component's most important properties are:
  *
- * * {@linkcode CameraProps.device | device}: Specifies the {@linkcode CameraDevice} to use. Get a {@linkcode CameraDevice} by using the {@linkcode useCameraDevice | useCameraDevice(..)} hook, or manually by using the {@linkcode CameraDevices.getAvailableCameraDevices CameraDevices.getAvailableCameraDevices()} function.
- * * {@linkcode CameraProps.isActive | isActive}: A boolean value that specifies whether the Camera should actively stream video frames or not. This can be compared to a Video component, where `isActive` specifies whether the video is paused or not. If you fully unmount the `<Camera>` component instead of using `isActive={false}`, the Camera will take a bit longer to start again.
+ * * {@linkcode CameraProps.device | device}: Specifies the {@linkcode CameraDevice} to use. Get a {@linkcode CameraDevice} by using
+ * the {@linkcode useCameraDevice | useCameraDevice(..)} hook, or manually by using
+ * the {@linkcode CameraDevices.getAvailableCameraDevices | CameraDevices.getAvailableCameraDevices()} function.
+ * * {@linkcode CameraProps.isActive | isActive}: A boolean value that specifies whether the Camera should
+ * actively stream video frames or not. This can be compared to a Video component, where `isActive` specifies whether the video
+ * is paused or not. If you fully unmount the `<Camera>` component instead of using `isActive={false}`, the Camera will take a bit longer to start again.
  *
  * @example
  * ```tsx
@@ -80,6 +85,8 @@ export class Camera extends React.PureComponent<CameraProps, CameraState> {
   displayName = Camera.displayName
   private lastFrameProcessor: ((frame: Frame) => void) | undefined
   private isNativeViewMounted = false
+  private lastUIRotation: number | undefined = undefined
+  private rotationHelper = new RotationHelper()
 
   private readonly ref: React.RefObject<RefType>
 
@@ -91,6 +98,8 @@ export class Camera extends React.PureComponent<CameraProps, CameraState> {
     this.onInitialized = this.onInitialized.bind(this)
     this.onStarted = this.onStarted.bind(this)
     this.onStopped = this.onStopped.bind(this)
+    this.onPreviewStarted = this.onPreviewStarted.bind(this)
+    this.onPreviewStopped = this.onPreviewStopped.bind(this)
     this.onShutter = this.onShutter.bind(this)
     this.onOutputOrientationChanged = this.onOutputOrientationChanged.bind(this)
     this.onPreviewOrientationChanged = this.onPreviewOrientationChanged.bind(this)
@@ -522,16 +531,41 @@ export class Camera extends React.PureComponent<CameraProps, CameraState> {
     this.props.onStopped?.()
   }
 
+  private onPreviewStarted(): void {
+    this.props.onPreviewStarted?.()
+  }
+
+  private onPreviewStopped(): void {
+    this.props.onPreviewStopped?.()
+  }
+
   private onShutter(event: NativeSyntheticEvent<OnShutterEvent>): void {
     this.props.onShutter?.(event.nativeEvent)
   }
 
-  private onOutputOrientationChanged(event: NativeSyntheticEvent<OutputOrientationChangedEvent>): void {
-    this.props.onOutputOrientationChanged?.(event.nativeEvent.outputOrientation)
+  private onOutputOrientationChanged({ nativeEvent: { outputOrientation } }: NativeSyntheticEvent<OutputOrientationChangedEvent>): void {
+    this.rotationHelper.outputOrientation = outputOrientation
+    this.props.onOutputOrientationChanged?.(outputOrientation)
+    this.maybeUpdateUIRotation()
   }
 
-  private onPreviewOrientationChanged(event: NativeSyntheticEvent<PreviewOrientationChangedEvent>): void {
-    this.props.onPreviewOrientationChanged?.(event.nativeEvent.previewOrientation)
+  private onPreviewOrientationChanged({ nativeEvent: { previewOrientation } }: NativeSyntheticEvent<PreviewOrientationChangedEvent>): void {
+    this.rotationHelper.previewOrientation = previewOrientation
+    this.props.onPreviewOrientationChanged?.(previewOrientation)
+    this.maybeUpdateUIRotation()
+
+    if (isSkiaFrameProcessor(this.props.frameProcessor)) {
+      // If we have a Skia Frame Processor, we need to update it's orientation so it knows how to render.
+      this.props.frameProcessor.previewOrientation.value = previewOrientation
+    }
+  }
+
+  private maybeUpdateUIRotation(): void {
+    const uiRotation = this.rotationHelper.uiRotation
+    if (uiRotation !== this.lastUIRotation) {
+      this.props.onUIRotationChanged?.(uiRotation)
+      this.lastUIRotation = uiRotation
+    }
   }
   //#endregion
 
@@ -592,7 +626,7 @@ export class Camera extends React.PureComponent<CameraProps, CameraState> {
   /** @internal */
   public render(): React.ReactNode {
     // We remove the big `device` object from the props because we only need to pass `cameraId` to native.
-    const { device, frameProcessor, codeScanner, enableFpsGraph, ...props } = this.props
+    const { device, frameProcessor, codeScanner, enableFpsGraph, fps, ...props } = this.props
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (device == null) {
@@ -605,6 +639,11 @@ export class Camera extends React.PureComponent<CameraProps, CameraState> {
     const shouldEnableBufferCompression = props.video === true && frameProcessor == null
     const torch = this.state.isRecordingWithFlash ? 'on' : props.torch
     const isRenderingWithSkia = isSkiaFrameProcessor(frameProcessor)
+    const shouldBeMirrored = device.position === 'front'
+
+    // minFps/maxFps is either the fixed `fps` value, or a value from the [min, max] tuple
+    const minFps = fps == null ? undefined : typeof fps === 'number' ? fps : fps[0]
+    const maxFps = fps == null ? undefined : typeof fps === 'number' ? fps : fps[1]
 
     return (
       <NativeCameraView
@@ -612,12 +651,17 @@ export class Camera extends React.PureComponent<CameraProps, CameraState> {
         cameraId={device.id}
         ref={this.ref}
         torch={torch}
+        minFps={minFps}
+        maxFps={maxFps}
+        isMirrored={props.isMirrored ?? shouldBeMirrored}
         onViewReady={this.onViewReady}
         onAverageFpsChanged={enableFpsGraph ? this.onAverageFpsChanged : undefined}
         onInitialized={this.onInitialized}
         onCodeScanned={this.onCodeScanned}
         onStarted={this.onStarted}
         onStopped={this.onStopped}
+        onPreviewStarted={this.onPreviewStarted}
+        onPreviewStopped={this.onPreviewStopped}
         onShutter={this.onShutter}
         onOutputOrientationChanged={this.onOutputOrientationChanged}
         onPreviewOrientationChanged={this.onPreviewOrientationChanged}

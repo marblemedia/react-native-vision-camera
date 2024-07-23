@@ -33,11 +33,14 @@ export type NativeCameraViewProps = Omit<
   | 'onPreviewOrientationChanged'
   | 'frameProcessor'
   | 'codeScanner'
+  | 'fps'
 > & {
   // private intermediate props
   cameraId: string
   enableFrameProcessor: boolean
   codeScannerOptions?: Omit<CodeScanner, 'onCodeScanned'>
+  minFps?: number
+  maxFps?: number
   // private events
   onViewReady: (event: NativeSyntheticEvent<void>) => void
   onAverageFpsChanged?: (event: NativeSyntheticEvent<AverageFpsChangedEvent>) => void
@@ -47,6 +50,8 @@ export type NativeCameraViewProps = Omit<
   onCodeScanned?: (event: NativeSyntheticEvent<OnCodeScannedEvent>) => void
   onStarted?: (event: NativeSyntheticEvent<void>) => void
   onStopped?: (event: NativeSyntheticEvent<void>) => void
+  onPreviewStarted?: (event: NativeSyntheticEvent<void>) => void
+  onPreviewStopped?: (event: NativeSyntheticEvent<void>) => void
   onShutter?: (event: NativeSyntheticEvent<OnShutterEvent>) => void
   onOutputOrientationChanged?: (event: NativeSyntheticEvent<OutputOrientationChangedEvent>) => void
   onPreviewOrientationChanged?: (event: NativeSyntheticEvent<PreviewOrientationChangedEvent>) => void

@@ -89,7 +89,7 @@ public class ExamplePluginFilter: FrameProcessorPlugin {
       print("Could not create output sample buffer - failed with status: \(createSampleBufferStatus)")
       return frame
     }
-    let outputFrame = Frame(buffer: sampleBufferOut, orientation: frame.orientation)
+    let outputFrame = Frame(buffer: sampleBufferOut, orientation: frame.orientation, isMirrored: false)
     outputFrame.incrementRefCount()
     return outputFrame
     

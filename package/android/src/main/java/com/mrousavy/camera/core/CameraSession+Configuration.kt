@@ -2,8 +2,6 @@ package com.mrousavy.camera.core
 
 import android.annotation.SuppressLint
 import android.util.Log
-import android.util.Range
-import android.util.Size
 import androidx.annotation.OptIn
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraState
@@ -20,28 +18,13 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.Recorder
 import androidx.camera.video.VideoCapture
 import androidx.lifecycle.Lifecycle
-import com.mrousavy.camera.core.extensions.byId
-import com.mrousavy.camera.core.extensions.forSize
-import com.mrousavy.camera.core.extensions.id
-import com.mrousavy.camera.core.extensions.isSDR
-import com.mrousavy.camera.core.extensions.setTargetFrameRate
-import com.mrousavy.camera.core.extensions.toCameraError
-import com.mrousavy.camera.core.extensions.withExtension
+import com.mrousavy.camera.core.extensions.*
 import com.mrousavy.camera.core.types.CameraDeviceFormat
 import com.mrousavy.camera.core.types.Torch
 import com.mrousavy.camera.core.types.VideoStabilizationMode
 import kotlin.math.roundToInt
 
-internal fun getTargetFpsRange(configuration: CameraConfiguration): Range<Int>? {
-  val fps = configuration.fps ?: return null
-  return if (configuration.enableLowLightBoost) {
-    Range(fps / 2, fps)
-  } else {
-    Range(fps, fps)
-  }
-}
-
-internal fun assertFormatRequirement(
+private fun assertFormatRequirement(
   propName: String,
   format: CameraDeviceFormat?,
   throwIfNotMet: CameraError,
@@ -62,10 +45,13 @@ internal fun assertFormatRequirement(
 @Suppress("LiftReturnOrAssignment")
 internal fun CameraSession.configureOutputs(configuration: CameraConfiguration) {
   Log.i(CameraSession.TAG, "Creating new Outputs for Camera #${configuration.cameraId}...")
-  val fpsRange = getTargetFpsRange(configuration)
+  val fpsRange = configuration.targetFpsRange
   val format = configuration.format
 
   Log.i(CameraSession.TAG, "Using FPS Range: $fpsRange")
+
+  val photoConfig = configuration.photo as? CameraConfiguration.Output.Enabled<CameraConfiguration.Photo>
+  val videoConfig = configuration.video as? CameraConfiguration.Output.Enabled<CameraConfiguration.Video>
 
   // 1. Preview
   val previewConfig = configuration.preview as? CameraConfiguration.Output.Enabled<CameraConfiguration.Preview>
@@ -85,6 +71,15 @@ internal fun CameraSession.configureOutputs(configuration: CameraConfiguration) 
         }
         preview.setTargetFrameRate(fpsRange)
       }
+
+      if (format != null) {
+        // Similar to iOS, Preview will follow video size as it's size (and aspect ratio)
+        val previewResolutionSelector = ResolutionSelector.Builder()
+          .forSize(format.videoSize)
+          .setAllowedResolutionMode(ResolutionSelector.PREFER_CAPTURE_RATE_OVER_HIGHER_RESOLUTION)
+          .build()
+        preview.setResolutionSelector(previewResolutionSelector)
+      }
     }.build()
     preview.setSurfaceProvider(previewConfig.config.surfaceProvider)
     previewOutput = preview
@@ -93,7 +88,6 @@ internal fun CameraSession.configureOutputs(configuration: CameraConfiguration) 
   }
 
   // 2. Image Capture
-  val photoConfig = configuration.photo as? CameraConfiguration.Output.Enabled<CameraConfiguration.Photo>
   if (photoConfig != null) {
     Log.i(CameraSession.TAG, "Creating Photo output...")
     val photo = ImageCapture.Builder().also { photo ->
@@ -114,7 +108,6 @@ internal fun CameraSession.configureOutputs(configuration: CameraConfiguration) 
   }
 
   // 3. Video Capture
-  val videoConfig = configuration.video as? CameraConfiguration.Output.Enabled<CameraConfiguration.Video>
   if (videoConfig != null) {
     Log.i(CameraSession.TAG, "Creating Video output...")
     val currentRecorder = recorderOutput
@@ -137,7 +130,11 @@ internal fun CameraSession.configureOutputs(configuration: CameraConfiguration) 
 
     val video = VideoCapture.Builder(recorder).also { video ->
       // Configure Video Output
-      video.setMirrorMode(MirrorMode.MIRROR_MODE_ON_FRONT_ONLY)
+      if (videoConfig.config.isMirrored) {
+        video.setMirrorMode(MirrorMode.MIRROR_MODE_ON)
+      } else {
+        video.setMirrorMode(MirrorMode.MIRROR_MODE_OFF)
+      }
       if (configuration.videoStabilizationMode.isAtLeast(VideoStabilizationMode.STANDARD)) {
         assertFormatRequirement("videoStabilizationMode", format, InvalidVideoStabilizationMode(configuration.videoStabilizationMode)) {
           it.videoStabilizationModes.contains(configuration.videoStabilizationMode)
@@ -206,11 +203,7 @@ internal fun CameraSession.configureOutputs(configuration: CameraConfiguration) 
   val codeScannerConfig = configuration.codeScanner as? CameraConfiguration.Output.Enabled<CameraConfiguration.CodeScanner>
   if (codeScannerConfig != null) {
     Log.i(CameraSession.TAG, "Creating CodeScanner output...")
-    val analyzer = ImageAnalysis.Builder().also { analysis ->
-      val targetSize = Size(1280, 720)
-      val resolutionSelector = ResolutionSelector.Builder().forSize(targetSize).build()
-      analysis.setResolutionSelector(resolutionSelector)
-    }.build()
+    val analyzer = ImageAnalysis.Builder().build()
     val pipeline = CodeScannerPipeline(codeScannerConfig.config, callback)
     analyzer.setAnalyzer(CameraQueues.analyzerExecutor, pipeline)
     codeScannerOutput = analyzer
@@ -270,19 +263,26 @@ internal suspend fun CameraSession.configureCamera(provider: ProcessCameraProvid
   // Bind it all together (must be on UI Thread)
   Log.i(CameraSession.TAG, "Binding ${useCases.size} use-cases...")
   camera = provider.bindToLifecycle(this, cameraSelector, *useCases.toTypedArray())
+  // Notify callback
+  callback.onInitialized()
 
   // Update currentUseCases for next unbind
   currentUseCases = useCases
 
   // Listen to Camera events
-  var lastState = CameraState.Type.OPENING
+  var lastIsStreaming = false
   camera!!.cameraInfo.cameraState.observe(this) { state ->
     Log.i(CameraSession.TAG, "Camera State: ${state.type} (has error: ${state.error != null})")
 
-    if (state.type == CameraState.Type.OPEN && state.type != lastState) {
-      // Camera has now been initialized!
-      callback.onInitialized()
-      lastState = state.type
+    val isStreaming = state.type == CameraState.Type.OPEN
+    if (isStreaming != lastIsStreaming) {
+      // Notify callback
+      if (isStreaming) {
+        callback.onStarted()
+      } else {
+        callback.onStopped()
+      }
+      lastIsStreaming = isStreaming
     }
 
     val error = state.error

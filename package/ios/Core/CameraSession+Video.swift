@@ -76,7 +76,7 @@ extension CameraSession {
             // Recording was successfully saved
             let video = Video(path: recordingSession.url.absoluteString,
                               duration: recordingSession.duration,
-                              size: recordingSession.size ?? CGSize.zero)
+                              size: recordingSession.size)
             onVideoRecorded(video)
           } else {
             // Recording wasn't saved and we don't have an error either.
@@ -91,12 +91,15 @@ extension CameraSession {
       VisionLogger.log(level: .info, message: "Will record to temporary file: \(tempURL)")
 
       do {
+        // Orientation is relative to our current output orientation
+        let orientation = self.outputOrientation.relativeTo(orientation: videoOutput.orientation)
+
         // Create RecordingSession for the temp file
         let recordingSession = try RecordingSession(url: tempURL,
                                                     fileType: options.fileType,
                                                     metadataProvider: self.metadataProvider,
                                                     clock: self.captureSession.clock,
-                                                    orientation: self.videoFileOrientation,
+                                                    orientation: orientation,
                                                     completion: onFinish)
 
         // Init Audio + Activate Audio Session (optional)

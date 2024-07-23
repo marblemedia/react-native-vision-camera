@@ -53,6 +53,7 @@ class CameraView(context: Context) :
   var cameraId: String? = null
   var enableDepthData = false
   var enablePortraitEffectsMatteDelivery = false
+  var isMirrored = false
 
   // use-cases
   var photo = false
@@ -69,7 +70,8 @@ class CameraView(context: Context) :
 
   // props that require format reconfiguring
   var format: CameraDeviceFormat? = null
-  var fps: Int? = null
+  var minFps: Int? = null
+  var maxFps: Int? = null
   var videoStabilizationMode: VideoStabilizationMode? = null
   var videoHdr = false
   var photoHdr = false
@@ -171,21 +173,21 @@ class CameraView(context: Context) :
 
         // Photo
         if (photo) {
-          config.photo = CameraConfiguration.Output.Enabled.create(CameraConfiguration.Photo(photoHdr, photoQualityBalance))
+          config.photo = CameraConfiguration.Output.Enabled.create(CameraConfiguration.Photo(isMirrored, photoHdr, photoQualityBalance))
         } else {
           config.photo = CameraConfiguration.Output.Disabled.create()
         }
 
         // Video
         if (video || enableFrameProcessor) {
-          config.video = CameraConfiguration.Output.Enabled.create(CameraConfiguration.Video(videoHdr))
+          config.video = CameraConfiguration.Output.Enabled.create(CameraConfiguration.Video(isMirrored, videoHdr))
         } else {
           config.video = CameraConfiguration.Output.Disabled.create()
         }
 
         // Frame Processor
         if (enableFrameProcessor) {
-          config.frameProcessor = CameraConfiguration.Output.Enabled.create(CameraConfiguration.FrameProcessor(pixelFormat))
+          config.frameProcessor = CameraConfiguration.Output.Enabled.create(CameraConfiguration.FrameProcessor(isMirrored, pixelFormat))
         } else {
           config.frameProcessor = CameraConfiguration.Output.Disabled.create()
         }
@@ -217,7 +219,8 @@ class CameraView(context: Context) :
         config.format = format
 
         // Side-Props
-        config.fps = fps
+        config.minFps = minFps
+        config.maxFps = maxFps
         config.enableLowLightBoost = lowLightBoost
         config.torch = torch
         config.exposure = exposure
@@ -282,11 +285,19 @@ class CameraView(context: Context) :
         LayoutParams.MATCH_PARENT,
         Gravity.CENTER
       )
+      var lastIsPreviewing = false
       it.previewStreamState.observe(cameraSession) { state ->
-        when (state) {
-          PreviewView.StreamState.STREAMING -> onStarted()
-          PreviewView.StreamState.IDLE -> onStopped()
-          else -> Log.i(TAG, "PreviewView Stream State changed to $state")
+        Log.i(TAG, "PreviewView Stream State changed to $state")
+
+        val isPreviewing = state == PreviewView.StreamState.STREAMING
+        if (isPreviewing != lastIsPreviewing) {
+          // Notify callback
+          if (isPreviewing) {
+            invokeOnPreviewStarted()
+          } else {
+            invokeOnPreviewStopped()
+          }
+          lastIsPreviewing = isPreviewing
         }
       }
     }
