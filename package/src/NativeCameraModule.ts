@@ -21,7 +21,6 @@ if (CameraModule == null) {
   if (Platform.OS === 'android') message += '\n* Make sure gradle is synced.'
 
   // check if Expo
-  // @ts-expect-error expo global JSI modules are not typed
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const ExpoConstants = global.expo?.modules?.ExponentConstants
   if (ExpoConstants != null) {
