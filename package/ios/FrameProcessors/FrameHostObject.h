@@ -25,8 +25,9 @@ public:
   std::vector<jsi::PropNameID> getPropertyNames(jsi::Runtime& rt) override;
 
 public:
-  Frame* getFrame();
-  Frame* _frame;
+  inline Frame* getFrame() const noexcept {
+    return _frame;
+  }
 
 private:
   std::unique_ptr<jsi::Object> _baseClass;
