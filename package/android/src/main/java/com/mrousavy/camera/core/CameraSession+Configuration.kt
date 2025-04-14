@@ -22,6 +22,7 @@ import com.mrousavy.camera.core.extensions.*
 import com.mrousavy.camera.core.types.CameraDeviceFormat
 import com.mrousavy.camera.core.types.Torch
 import com.mrousavy.camera.core.types.VideoStabilizationMode
+import com.mrousavy.camera.core.utils.CamcorderProfileUtils
 import kotlin.math.roundToInt
 
 private fun assertFormatRequirement(
@@ -44,7 +45,8 @@ private fun assertFormatRequirement(
 @SuppressLint("RestrictedApi")
 @Suppress("LiftReturnOrAssignment")
 internal fun CameraSession.configureOutputs(configuration: CameraConfiguration) {
-  Log.i(CameraSession.TAG, "Creating new Outputs for Camera #${configuration.cameraId}...")
+  val cameraId = configuration.cameraId!!
+  Log.i(CameraSession.TAG, "Creating new Outputs for Camera #$cameraId...")
   val fpsRange = configuration.targetFpsRange
   val format = configuration.format
 
@@ -73,9 +75,11 @@ internal fun CameraSession.configureOutputs(configuration: CameraConfiguration) 
       }
 
       if (format != null) {
-        // Similar to iOS, Preview will follow video size as it's size (and aspect ratio)
+        // Preview will follow video size as it's size & aspect ratio, or photo- if video is disabled.
+        val targetSize = if (videoConfig != null) format.videoSize else format.photoSize
+
         val previewResolutionSelector = ResolutionSelector.Builder()
-          .forSize(format.videoSize)
+          .forSize(targetSize)
           .setAllowedResolutionMode(ResolutionSelector.PREFER_CAPTURE_RATE_OVER_HIGHER_RESOLUTION)
           .build()
         preview.setResolutionSelector(previewResolutionSelector)
@@ -120,11 +124,24 @@ internal fun CameraSession.configureOutputs(configuration: CameraConfiguration) 
       // We are currently not recording, so we can re-create a recorder instance if needed.
       Log.i(CameraSession.TAG, "Creating new Recorder...")
       Recorder.Builder().also { recorder ->
-        configuration.format?.let { format ->
+        format?.let { format ->
           recorder.setQualitySelector(format.videoQualitySelector)
         }
-        // TODO: Make videoBitRate a Camera Prop
-        // video.setTargetVideoEncodingBitRate()
+        videoConfig.config.bitRateOverride?.let { bitRateOverride ->
+          val bps = bitRateOverride * 1_000_000
+          recorder.setTargetVideoEncodingBitRate(bps.toInt())
+        }
+        videoConfig.config.bitRateMultiplier?.let { bitRateMultiplier ->
+          if (format == null) {
+            // We need to get the videoSize to estimate the bitRate modifier
+            throw PropRequiresFormatToBeNonNullError("videoBitRate")
+          }
+          val recommendedBitRate = CamcorderProfileUtils.getRecommendedBitRate(cameraId, format.videoSize)
+          if (recommendedBitRate != null) {
+            val targetBitRate = recommendedBitRate.toDouble() * bitRateMultiplier
+            recorder.setTargetVideoEncodingBitRate(targetBitRate.toInt())
+          }
+        }
       }.build()
     }
 

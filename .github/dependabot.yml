@@ -4,32 +4,46 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
     labels:
       - "🛠 dependencies"
+
   - package-ecosystem: "gradle"
     directory: "/package/android/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
     labels:
       - "🛠 dependencies"
       - "🤖 android"
-  # - package-ecosystem: "npm"
+
+  - package-ecosystem: "bun"
+    directories:
+      - "/docs/"
+    schedule:
+      interval: "daily"
+    labels:
+      - "🛠 dependencies"
+    groups:
+      docusaurus:
+        patterns:
+          - "@docusaurus/*"
+
+  # - package-ecosystem: "bun"
   #   directory: "/package/"
   #   schedule:
   #     interval: "monthly"
   #   labels:
   #     - "🛠 dependencies"
   #     - "☕️ js"
-  # - package-ecosystem: "npm"
-  #   directory: "/package/example/"
+  # - package-ecosystem: "bun"
+  #   directory: "/example/"
   #   schedule:
   #     interval: "monthly"
   #   labels:
   #     - "🛠 dependencies"
   #     - "🛸 example"
   #     - "☕️ js"
-  # - package-ecosystem: "npm"
+  # - package-ecosystem: "bun"
   #   directory: "/docs/"
   #   schedule:
   #     interval: "monthly"

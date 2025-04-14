@@ -84,12 +84,14 @@ class CameraSession(internal val context: Context, internal val callback: Callba
   override fun close() {
     Log.i(TAG, "Closing CameraSession...")
     isDestroyed = true
+    orientationManager.stopOrientationUpdates()
     runOnUiThread {
       lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
     }
   }
 
-  override fun getLifecycle(): Lifecycle = lifecycleRegistry
+  override val lifecycle: Lifecycle
+    get() = lifecycleRegistry
 
   /**
    * Configures the [CameraSession] with new values in one batch.
@@ -102,7 +104,13 @@ class CameraSession(internal val context: Context, internal val callback: Callba
     }
     Log.i(TAG, "configure { ... }: Waiting for lock...")
 
-    val provider = cameraProvider.await(mainExecutor)
+    val provider = try {
+      cameraProvider.await(mainExecutor)
+    } catch (error: Throwable) {
+      Log.e(TAG, "Failed to get CameraProvider! Error: ${error.message}", error)
+      callback.onError(error)
+      return
+    }
 
     mutex.withLock {
       // Let caller configure a new configuration for the Camera.
