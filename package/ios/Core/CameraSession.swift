@@ -34,6 +34,8 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
   var didCancelRecording = false
   var orientationManager = OrientationManager()
 
+  var isConfiguringSession = false
+
   // Callbacks
   weak var delegate: CameraSessionDelegate?
 
@@ -115,6 +117,11 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
 
     // Set up Camera (Video) Capture Session (on camera queue, acts like a lock)
     CameraQueues.cameraQueue.async {
+      guard !self.isConfiguringSession else {
+        VisionLogger.log(level: .warning, message: "Configuration already in progress, ignoring")
+        return
+      }
+
       // Let caller configure a new configuration for the Camera.
       let config = CameraConfiguration(copyOf: self.configuration)
       do {
@@ -134,6 +141,7 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
       do {
         // If needed, configure the AVCaptureSession (inputs, outputs)
         if difference.isSessionConfigurationDirty {
+          self.isConfiguringSession = true
           self.captureSession.beginConfiguration()
 
           // 1. Update input device
@@ -193,6 +201,7 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
           // We commit the session config updates AFTER the device config,
           // that way we can also batch those changes into one update instead of doing two updates.
           self.captureSession.commitConfiguration()
+          self.isConfiguringSession = false
         }
 
         // 10. Start or stop the session if needed
@@ -210,6 +219,7 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         // After configuring, set this to the new configuration.
         self.configuration = config
       } catch {
+        self.isConfiguringSession = false
         self.onConfigureError(error)
       }
 
