@@ -140,13 +140,11 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         message: "configure { ... }: Updating CameraSession Configuration... \(difference)")
 
       do {
-        var didBeginSessionConfig = false
 
         // If needed, configure the AVCaptureSession (inputs, outputs)
-        if difference.isSessionConfigurationDirty {
+        let needsConfiguration = difference.isSessionConfigurationDirty
+        if needsConfiguration {
           self.captureSession.beginConfiguration()
-          didBeginSessionConfig = true
-
           // 1. Update input device
           if difference.inputChanged {
             try self.configureDevice(configuration: config)
@@ -166,7 +164,7 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         }
 
         guard let device = self.videoDeviceInput?.device else {
-          if didBeginSessionConfig {
+          if needsConfiguration {
             self.captureSession.commitConfiguration()
           }
           throw CameraError.device(.noDevice)
@@ -203,7 +201,7 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
           }
         }
 
-        if didBeginSessionConfig {
+        if needsConfiguration {
           self.captureSession.commitConfiguration()
         }
 
