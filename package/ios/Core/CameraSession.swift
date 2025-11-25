@@ -9,11 +9,11 @@
 import AVFoundation
 import Foundation
 
-/**
- A fully-featured Camera Session supporting preview, video, photo, frame processing, and code scanning outputs.
- All changes to the session have to be controlled via the `configure` function.
- */
-final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
+/// A fully-featured Camera Session supporting preview, video, photo, frame processing, and code scanning outputs.
+/// All changes to the session have to be controlled via the `configure` function.
+final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate,
+  AVCaptureAudioDataOutputSampleBufferDelegate
+{
   // Configuration
   private var isInitialized = false
   var configuration: CameraConfiguration?
@@ -53,18 +53,21 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
    */
   override init() {
     super.init()
-    NotificationCenter.default.addObserver(self,
-                                           selector: #selector(sessionRuntimeError),
-                                           name: .AVCaptureSessionRuntimeError,
-                                           object: captureSession)
-    NotificationCenter.default.addObserver(self,
-                                           selector: #selector(sessionRuntimeError),
-                                           name: .AVCaptureSessionRuntimeError,
-                                           object: audioCaptureSession)
-    NotificationCenter.default.addObserver(self,
-                                           selector: #selector(audioSessionInterrupted),
-                                           name: AVAudioSession.interruptionNotification,
-                                           object: AVAudioSession.sharedInstance)
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(sessionRuntimeError),
+      name: .AVCaptureSessionRuntimeError,
+      object: captureSession)
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(sessionRuntimeError),
+      name: .AVCaptureSessionRuntimeError,
+      object: audioCaptureSession)
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(audioSessionInterrupted),
+      name: AVAudioSession.interruptionNotification,
+      object: AVAudioSession.sharedInstance)
   }
 
   private func initialize() {
@@ -76,15 +79,18 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
   }
 
   deinit {
-    NotificationCenter.default.removeObserver(self,
-                                              name: .AVCaptureSessionRuntimeError,
-                                              object: captureSession)
-    NotificationCenter.default.removeObserver(self,
-                                              name: .AVCaptureSessionRuntimeError,
-                                              object: audioCaptureSession)
-    NotificationCenter.default.removeObserver(self,
-                                              name: AVAudioSession.interruptionNotification,
-                                              object: AVAudioSession.sharedInstance)
+    NotificationCenter.default.removeObserver(
+      self,
+      name: .AVCaptureSessionRuntimeError,
+      object: captureSession)
+    NotificationCenter.default.removeObserver(
+      self,
+      name: .AVCaptureSessionRuntimeError,
+      object: audioCaptureSession)
+    NotificationCenter.default.removeObserver(
+      self,
+      name: AVAudioSession.interruptionNotification,
+      object: AVAudioSession.sharedInstance)
   }
 
   /**
@@ -117,11 +123,6 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
 
     // Set up Camera (Video) Capture Session (on camera queue, acts like a lock)
     CameraQueues.cameraQueue.async {
-      guard !self.isConfiguringSession else {
-        VisionLogger.log(level: .warning, message: "Configuration already in progress, ignoring")
-        return
-      }
-
       // Let caller configure a new configuration for the Camera.
       let config = CameraConfiguration(copyOf: self.configuration)
       do {
@@ -136,7 +137,9 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
       }
       let difference = CameraConfiguration.Difference(between: self.configuration, and: config)
 
-      VisionLogger.log(level: .info, message: "configure { ... }: Updating CameraSession Configuration... \(difference)")
+      VisionLogger.log(
+        level: .info,
+        message: "configure { ... }: Updating CameraSession Configuration... \(difference)")
 
       do {
         // If needed, configure the AVCaptureSession (inputs, outputs)
@@ -265,6 +268,11 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
       return
     }
 
+    guard !self.isConfiguringSession else {
+      VisionLogger.log(level: .warning, message: "Configuration already in progress, ignoring")
+      return
+    }
+
     // Start/Stop session
     if configuration.isActive {
       captureSession.startRunning()
@@ -275,10 +283,15 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     }
   }
 
-  public final func captureOutput(_ captureOutput: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+  public final func captureOutput(
+    _ captureOutput: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
+    from connection: AVCaptureConnection
+  ) {
     switch captureOutput {
     case is AVCaptureVideoDataOutput:
-      onVideoFrame(sampleBuffer: sampleBuffer, orientation: connection.orientation, isMirrored: connection.isVideoMirrored)
+      onVideoFrame(
+        sampleBuffer: sampleBuffer, orientation: connection.orientation,
+        isMirrored: connection.isVideoMirrored)
     case is AVCaptureAudioDataOutput:
       onAudioFrame(sampleBuffer: sampleBuffer)
     default:
@@ -286,7 +299,9 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     }
   }
 
-  private final func onVideoFrame(sampleBuffer: CMSampleBuffer, orientation: Orientation, isMirrored: Bool) {
+  private final func onVideoFrame(
+    sampleBuffer: CMSampleBuffer, orientation: Orientation, isMirrored: Bool
+  ) {
     if let recordingSession {
       do {
         // Write the Video Buffer to the .mov/.mp4 file
