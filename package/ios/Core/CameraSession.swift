@@ -147,6 +147,11 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
           self.isConfiguringSession = true
           self.captureSession.beginConfiguration()
 
+          defer {
+            self.captureSession.commitConfiguration()
+            self.isConfiguringSession = false
+          }
+
           // 1. Update input device
           if difference.inputChanged {
             try self.configureDevice(configuration: config)
@@ -200,13 +205,6 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
           }
         }
 
-        if difference.isSessionConfigurationDirty {
-          // We commit the session config updates AFTER the device config,
-          // that way we can also batch those changes into one update instead of doing two updates.
-          self.captureSession.commitConfiguration()
-          self.isConfiguringSession = false
-        }
-
         // 10. Start or stop the session if needed
         self.checkIsActive(configuration: config)
 
@@ -234,11 +232,13 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             VisionLogger.log(level: .info, message: "Beginning AudioSession configuration...")
             self.audioCaptureSession.beginConfiguration()
 
+            defer {
+              self.audioCaptureSession.commitConfiguration()
+              VisionLogger.log(level: .info, message: "Committed AudioSession configuration!")
+            }
+
             try self.configureAudioSession(configuration: config)
 
-            // Unlock Capture Session again and submit configuration to Hardware
-            self.audioCaptureSession.commitConfiguration()
-            VisionLogger.log(level: .info, message: "Committed AudioSession configuration!")
           } catch {
             self.onConfigureError(error)
           }
