@@ -85,7 +85,7 @@ export class Camera extends React.PureComponent<CameraProps, CameraState> {
   private lastUIRotation: number | undefined = undefined
   private rotationHelper = new RotationHelper()
 
-  private readonly ref: React.RefObject<RefType>
+  private readonly ref: React.RefObject<RefType | null>
 
   /** @internal */
   constructor(props: CameraProps) {
