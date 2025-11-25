@@ -34,8 +34,6 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
   var didCancelRecording = false
   var orientationManager = OrientationManager()
 
-  var isConfiguringSession = false
-
   // Callbacks
   weak var delegate: CameraSessionDelegate?
 
@@ -142,15 +140,12 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         message: "configure { ... }: Updating CameraSession Configuration... \(difference)")
 
       do {
+        var didBeginSessionConfig = false
+
         // If needed, configure the AVCaptureSession (inputs, outputs)
         if difference.isSessionConfigurationDirty {
-          self.isConfiguringSession = true
           self.captureSession.beginConfiguration()
-
-          defer {
-            self.captureSession.commitConfiguration()
-            self.isConfiguringSession = false
-          }
+          didBeginSessionConfig = true
 
           // 1. Update input device
           if difference.inputChanged {
@@ -171,6 +166,9 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         }
 
         guard let device = self.videoDeviceInput?.device else {
+          if didBeginSessionConfig {
+            self.captureSession.commitConfiguration()
+          }
           throw CameraError.device(.noDevice)
         }
 
@@ -205,6 +203,10 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
           }
         }
 
+        if didBeginSessionConfig {
+          self.captureSession.commitConfiguration()
+        }
+
         // 10. Start or stop the session if needed
         self.checkIsActive(configuration: config)
 
@@ -220,7 +222,6 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         // After configuring, set this to the new configuration.
         self.configuration = config
       } catch {
-        self.isConfiguringSession = false
         self.onConfigureError(error)
       }
 
@@ -265,11 +266,6 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
    */
   private func checkIsActive(configuration: CameraConfiguration) {
     if configuration.isActive == captureSession.isRunning {
-      return
-    }
-
-    guard !self.isConfiguringSession else {
-      VisionLogger.log(level: .warning, message: "Configuration already in progress, ignoring")
       return
     }
 
