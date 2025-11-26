@@ -59,9 +59,8 @@ class CameraDevicesManager(private val reactContext: ReactApplicationContext) : 
 
   override fun getName(): String = TAG
 
-  override fun initialize() {
-    super.initialize()
-    cameraManager.registerAvailabilityCallback(callback, null)
+  // Init cameraProvider + manager as early as possible
+  init {
     coroutineScope.launch {
       try {
         Log.i(TAG, "Initializing ProcessCameraProvider...")
@@ -72,8 +71,14 @@ class CameraDevicesManager(private val reactContext: ReactApplicationContext) : 
       } catch (error: Throwable) {
         Log.e(TAG, "Failed to initialize ProcessCameraProvider/ExtensionsManager! Error: ${error.message}", error)
       }
-      sendAvailableDevicesChangedEvent()
     }
+  }
+
+  // Note: initialize() will be called after getConstants on new arch!
+  override fun initialize() {
+    super.initialize()
+    cameraManager.registerAvailabilityCallback(callback, null)
+    sendAvailableDevicesChangedEvent()
   }
 
   override fun invalidate() {
