@@ -142,7 +142,8 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
       do {
 
         // If needed, configure the AVCaptureSession (inputs, outputs)
-        let needsConfiguration = difference.isSessionConfigurationDirty
+        // always reconfigure the session to fix AVCaptureSession crashes
+        let needsConfiguration = true // difference.isSessionConfigurationDirty
         if needsConfiguration {
           self.captureSession.beginConfiguration()
           // 1. Update input device
@@ -164,14 +165,11 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         }
 
         guard let device = self.videoDeviceInput?.device else {
-          if needsConfiguration {
-            self.captureSession.commitConfiguration()
-          }
           throw CameraError.device(.noDevice)
         }
 
         // If needed, configure the AVCaptureDevice (format, zoom, low-light-boost, ..)
-        if difference.isDeviceConfigurationDirty {
+        if needsConfiguration {
           try device.lockForConfiguration()
           defer {
             device.unlockForConfiguration()
