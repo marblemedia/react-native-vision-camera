@@ -261,17 +261,23 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
    Starts or stops the CaptureSession if needed (`isActive`)
    */
   private func checkIsActive(configuration: CameraConfiguration) {
-    if configuration.isActive == captureSession.isRunning {
-      return
-    }
+      if configuration.isActive == captureSession.isRunning {
+        return
+      }
 
-    // Start/Stop session
-    if configuration.isActive {
-      captureSession.startRunning()
-      delegate?.onCameraStarted()
-    } else {
-      captureSession.stopRunning()
-      delegate?.onCameraStopped()
+    // Start/Stop session on the next tick to ensure commitConfiguration has fully completed
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self else { return }
+      
+      guard configuration.isActive != self.captureSession.isRunning else { return }
+      
+      if configuration.isActive {
+        self.captureSession.startRunning()
+        self.delegate?.onCameraStarted()
+      } else {
+        self.captureSession.stopRunning()
+        self.delegate?.onCameraStopped()
+      }
     }
   }
 
